@@ -1,4 +1,4 @@
-# StudyBoard - Personal Task Tracker
+# Mavis - Personal Task Tracker
 
 ## 📌 Description
 StudyBoard is a comprehensive, plain JavaScript personal task tracker and student productivity dashboard. Built without complex build steps or heavy frameworks, it offers a fast, reliable, and secure way to manage your academic life, finances, and daily schedule. It seamlessly integrates with Supabase for data persistence while ensuring no local storage vulnerabilities or forced authentication hurdles.
@@ -31,7 +31,7 @@ Since StudyBoard is built with plain JavaScript, running it is incredibly simple
 1.  **Clone or Download:** Get the source code to your local machine.
 2.  **Supabase Configuration (Optional but Recommended for Sync):**
     *   Create a Supabase project.
-    *   Set up the required tables (`courses`, `tasks`, `transactions`, `board_settings`).
+    *   Set up the required tables (`courses`, `tasks`, `transactions`, `board_settings`), just copy the sql query in `database.sql` for more accurate connection in the backend.
     *   In the `index.html` and `supabaseClient.js` file, *before* the main `app.js` script is loaded, configure the global variable:
         ```html
         <script>
