@@ -32,7 +32,7 @@ Since StudyBoard is built with plain JavaScript, running it is incredibly simple
 2.  **Supabase Configuration (Optional but Recommended for Sync):**
     *   Create a Supabase project.
     *   Set up the required tables (`courses`, `tasks`, `transactions`, `board_settings`).
-    *   In the `index.html` file, *before* the main `app.js` script is loaded, configure the global variable:
+    *   In the `index.html` and `supabaseClient.js` file, *before* the main `app.js` script is loaded, configure the global variable:
         ```html
         <script>
           window.MAVIS_SUPABASE_CONFIG = {
