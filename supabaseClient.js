@@ -9,8 +9,8 @@
   }
 
   var config = window.MAVIS_SUPABASE_CONFIG || {};
-  var url = (config.url || "https://dpfkybonkhgdxfzvcioc.supabase.co").trim();
-  var anonKey = (config.anonKey || "sb_publishable_eLdMrUpAQfjkWfEX1ma1Tw_KKgqhRad").trim();
+  var url = (config.url || "YOUR_PROJECT_ID_URL").trim();
+  var anonKey = (config.anonKey || "YOUR_SUPABASE_ANON_KEY").trim();
 
   // Initialize to null. The app will handle this state.
   window.MAVIS_SUPABASE = null;

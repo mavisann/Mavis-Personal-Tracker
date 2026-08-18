@@ -12,7 +12,11 @@ CREATE TABLE IF NOT EXISTS courses (
     end_date DATE,
     modality TEXT,
     room TEXT,
+<<<<<<< HEAD
     color TEXT
+=======
+    color INTEGER
+>>>>>>> 8bb11d0272d6682960d9436498d3809833e7b45c
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -54,6 +58,7 @@ CREATE TABLE IF NOT EXISTS board_settings (
     "showDashboardExpenseBreakdown" BOOLEAN,
     "showDashboardMiniCalendar" BOOLEAN,
     "showScheduleTimeline" BOOLEAN,
+<<<<<<< HEAD
     "showSidebar" BOOLEAN,
     accent_color TEXT,
     layout_density TEXT,
@@ -64,3 +69,9 @@ CREATE TABLE IF NOT EXISTS board_settings (
 );
 
 COMMIT;
+=======
+    "showSidebar" BOOLEAN
+);
+
+COMMIT;
+>>>>>>> 8bb11d0272d6682960d9436498d3809833e7b45c
