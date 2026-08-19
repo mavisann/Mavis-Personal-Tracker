@@ -184,6 +184,10 @@
     taskSort: "daysLeft",
     budgetMonth: new Date().getMonth(),
     budgetYear: new Date().getFullYear(),
+    settingsTab: 'interface',
+    budgetView: 'overview',
+    budgetSearchQuery: "",
+    budgetDateFilter: "",
     searchQuery: "",
     editingBudget: false,
     miniCalCursor: { y: new Date().getFullYear(), m: new Date().getMonth(), d: new Date().getDate() }, // New
@@ -704,18 +708,18 @@
     var filteredCourses = [];
     if (searchCourses) {
         filteredCourses = state.courses.filter(function(c) {
-            return (c.name && c.name.toLowerCase().includes(query)) ||
-                   (c.code && c.code.toLowerCase().includes(query)) ||
-                   (c.professor && c.professor.toLowerCase().includes(query));
+            return (c.name && c.name.toLowerCase().startsWith(query)) ||
+                   (c.code && c.code.toLowerCase().startsWith(query)) ||
+                   (c.professor && c.professor.toLowerCase().startsWith(query));
         });
     }
 
     var filteredTasks = [];
     if (searchTasks) {
         filteredTasks = state.tasks.filter(function(t) {
-            return (t.title && t.title.toLowerCase().includes(query)) ||
-                   (t.description && t.description.toLowerCase().includes(query)) ||
-                   (t.courseName && t.courseName.toLowerCase().includes(query));
+            return (t.title && t.title.toLowerCase().startsWith(query)) ||
+                   (t.description && t.description.toLowerCase().startsWith(query)) ||
+                   (t.courseName && t.courseName.toLowerCase().startsWith(query));
         });
     }
 
@@ -805,113 +809,70 @@
     var taskCategories = Array.isArray(state.settings.taskCategories) && state.settings.taskCategories.length ? state.settings.taskCategories.slice() : ["Class", "Event", "Personal"];
     var taskPriorities = Array.isArray(state.settings.taskPriorities) && state.settings.taskPriorities.length ? state.settings.taskPriorities.slice() : DEFAULT_TASK_PRIORITIES.slice();
     var taskTypes = Array.isArray(state.settings.taskTypes) && state.settings.taskTypes.length ? state.settings.taskTypes.slice() : DEFAULT_TASK_TYPES.slice();
-    return '<div class="toolbar"><h2 style="margin:0;font-size:18px">Website settings</h2><div class="toolbar-right"><button class="btn" onclick="App.setTab(\'dashboard\')">Back to dashboard</button></div></div>' +
-      '<div class="grid grid-2" style="align-items:start">' + // New UI Customization section
-      '<div class="card"><h3 class="card-title">UI Customization</h3>' +
-      '<div style="display:grid;gap:18px">' +
-      // Accent Color
-      '<div><p class="section-label" style="margin:0 0 8px">Accent Color</p>' +
-      '<div class="chip-row" style="align-items:center;gap:12px;flex-wrap:wrap;">' +
-        '<div class="custom-color-picker-wrap">' +
-          '<button type="button" class="custom-color-picker-btn" style="background-color:' + escapeHtml(state.settings.accentColor) + '; color:' + getContrastTextColor(state.settings.accentColor) + ';" onclick="document.getElementById(\'accent-color-input\').click()">' +
-            icon("dropper", 18, "custom-color-picker-icon") +
-          '</button>' +
-          '<input type="color" id="accent-color-input" class="custom-color-picker-input" value="' + escapeHtml(state.settings.accentColor) + '" oninput="App.previewAccentColor(this.value)" onchange="App.setAccentColor(this.value)" />' +
-        '</div>' +
-        COURSE_COLORS.map(function(c) {
-          return '<button type="button" class="color-dot ' + (state.settings.accentColor === c ? "active" : "") + '" style="background:' + c + ';" data-color="' + c + '" onclick="App.setAccentColor(\'' + c + '\')"></button>';
+    var html = '<div class="toolbar"><h2 style="margin:0;font-size:18px">Website settings</h2><div class="toolbar-right"><button class="btn" onclick="App.setTab(\'dashboard\')">Back to dashboard</button></div></div>';
+
+    var tabs = { interface: 'Interface', tasks: 'Tasks', budget: 'Budget' };
+    html += '<div class="view-switch" style="margin-bottom: 20px;">' +
+        Object.keys(tabs).map(function(tabId) {
+            return '<button class="' + (ui.settingsTab === tabId ? "active" : "") + '" onclick="App.setSettingsTab(\'' + tabId + '\')">' + tabs[tabId] + '</button>';
         }).join("") +
-      '</div>' +
-      '</div>' +
-      // Layout Density
-      '<div><p class="section-label" style="margin:0 0 8px">Layout Density</p>' +
-      '<div class="radio-group-pills">' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="layoutDensity" value="comfortable" onchange="App.setLayoutDensity(this.value)" ' + (state.settings.layoutDensity === "comfortable" ? 'checked' : '') + '>' +
-      '<span>Comfortable</span></label>' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="layoutDensity" value="compact" onchange="App.setLayoutDensity(this.value)" ' + (state.settings.layoutDensity === "compact" ? 'checked' : '') + '>' +
-      '<span>Compact</span></label>' +
-      '</div></div>' +
-      // Sidebar Behavior
-      '<div><p class="section-label" style="margin:0 0 8px">Sidebar Behavior (Desktop)</p>' +
-      '<div class="radio-group-pills">' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="sidebarBehavior" value="alwaysOpen" onchange="App.setSidebarBehavior(this.value)" ' + (state.settings.showSidebar && !state.settings.sidebarExpandOnHover ? 'checked' : '') + '>' +
-      '<span>Always Open</span></label>' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="sidebarBehavior" value="expandOnHover" onchange="App.setSidebarBehavior(this.value)" ' + (!state.settings.showSidebar && state.settings.sidebarExpandOnHover ? 'checked' : '') + '>' +
-      '<span>Expand on Hover</span></label>' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="sidebarBehavior" value="alwaysClosed" onchange="App.setSidebarBehavior(this.value)" ' + (!state.settings.showSidebar && !state.settings.sidebarExpandOnHover ? 'checked' : '') + '>' +
-      '<span>Always Closed</span></label>' +
-      '</div></div>' +
-      // Accessibility Mode
-      '<div><p class="section-label" style="margin:0 0 8px">Accessibility Mode</p>' +
-      '<div class="radio-group-pills">' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="accessibilityMode" value="default" onchange="App.setAccessibilityMode(this.value)" ' + (state.settings.accessibilityMode === "default" ? 'checked' : '') + '>' +
-      '<span>Default</span></label>' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="accessibilityMode" value="highContrast" onchange="App.setAccessibilityMode(this.value)" ' + (state.settings.accessibilityMode === "highContrast" ? 'checked' : '') + '>' +
-      '<span>High Contrast</span></label>' +
-      '<label class="radio-label-pill">' +
-      '<input type="radio" name="accessibilityMode" value="reducedMotion" onchange="App.setAccessibilityMode(this.value)" ' + (state.settings.accessibilityMode === "reducedMotion" ? 'checked' : '') + '>' +
-      '<span>Reduced Motion</span></label>' +
-      '</div></div>' +
-      // Default Landing Tab
-      '<div><p class="section-label" style="margin:0 0 8px">Default Landing Tab</p>' +
-      '<select class="input" onchange="App.setDefaultLandingTab(this.value)">' +
-      ['dashboard', 'schedule', 'budget', 'tasks', 'calendar', 'settings'].map(function(tab) {
-        return '<option value="' + tab + '" ' + (state.settings.defaultLandingTab === tab ? 'selected' : '') + '>' + tab.charAt(0).toUpperCase() + tab.slice(1) + '</option>';
-      }).join('') +
-      '</select></div>' +
-      '</div></div>' +
+    '</div>';
 
-      // --- Dashboard Widgets ---
-      '<div class="card"><h3 class="card-title">Dashboard Widgets</h3>' +
-      '<div style="display:grid;gap:4px">' +
-      '<div class="setting-switch-row"><span>Money Monitor</span><label class="switch"><input type="checkbox" ' + (state.settings.showDashboardMoneyMonitor ? 'checked' : '') + ' onchange="App.toggleSetting(\'showDashboardMoneyMonitor\')"><span class="slider"></span></label></div>' +
-      '<div class="setting-switch-row"><span>Expense Breakdown</span><label class="switch"><input type="checkbox" ' + (state.settings.showDashboardExpenseBreakdown ? 'checked' : '') + ' onchange="App.toggleSetting(\'showDashboardExpenseBreakdown\')"><span class="slider"></span></label></div>' +
-      '<div class="setting-switch-row"><span>Mini Calendar</span><label class="switch"><input type="checkbox" ' + (state.settings.showDashboardMiniCalendar ? 'checked' : '') + ' onchange="App.toggleSetting(\'showDashboardMiniCalendar\')"><span class="slider"></span></label></div>' +
-      '<div class="setting-switch-row"><span>Today\'s Schedule Timeline</span><label class="switch"><input type="checkbox" ' + (state.settings.showScheduleTimeline ? 'checked' : '') + ' onchange="App.toggleSetting(\'showScheduleTimeline\')"><span class="slider"></span></label></div>' +
-      '</div></div>' +
+    if (ui.settingsTab === 'interface') {
+        html += '<div class="grid grid-2" style="align-items:start">' +
+            '<div class="card"><h3 class="card-title">UI Customization</h3>' +
+            '<div style="display:grid;gap:18px">' +
+            '<div><p class="section-label" style="margin:0 0 8px">Accent Color</p>' +
+            '<div class="chip-row" style="align-items:center;gap:12px;flex-wrap:wrap;">' +
+                '<div class="custom-color-picker-wrap">' +
+                '<button type="button" class="custom-color-picker-btn" style="background-color:' + escapeHtml(state.settings.accentColor) + '; color:' + getContrastTextColor(state.settings.accentColor) + ';" onclick="document.getElementById(\'accent-color-input\').click()">' + icon("dropper", 18, "custom-color-picker-icon") + '</button>' +
+                '<input type="color" id="accent-color-input" class="custom-color-picker-input" value="' + escapeHtml(state.settings.accentColor) + '" oninput="App.previewAccentColor(this.value)" onchange="App.setAccentColor(this.value)" />' +
+                '</div>' +
+                COURSE_COLORS.map(function(c) { return '<button type="button" class="color-dot ' + (state.settings.accentColor === c ? "active" : "") + '" style="background:' + c + ';" data-color="' + c + '" onclick="App.setAccentColor(\'' + c + '\')"></button>'; }).join("") +
+            '</div></div>' +
+            '<div><p class="section-label" style="margin:0 0 8px">Layout Density</p><div class="radio-group-pills"><label class="radio-label-pill"><input type="radio" name="layoutDensity" value="comfortable" onchange="App.setLayoutDensity(this.value)" ' + (state.settings.layoutDensity === "comfortable" ? 'checked' : '') + '><span>Comfortable</span></label><label class="radio-label-pill"><input type="radio" name="layoutDensity" value="compact" onchange="App.setLayoutDensity(this.value)" ' + (state.settings.layoutDensity === "compact" ? 'checked' : '') + '><span>Compact</span></label></div></div>' +
+            '<div><p class="section-label" style="margin:0 0 8px">Sidebar Behavior (Desktop)</p><div class="radio-group-pills"><label class="radio-label-pill"><input type="radio" name="sidebarBehavior" value="alwaysOpen" onchange="App.setSidebarBehavior(this.value)" ' + (state.settings.showSidebar && !state.settings.sidebarExpandOnHover ? 'checked' : '') + '><span>Always Open</span></label><label class="radio-label-pill"><input type="radio" name="sidebarBehavior" value="expandOnHover" onchange="App.setSidebarBehavior(this.value)" ' + (!state.settings.showSidebar && state.settings.sidebarExpandOnHover ? 'checked' : '') + '><span>Expand on Hover</span></label><label class="radio-label-pill"><input type="radio" name="sidebarBehavior" value="alwaysClosed" onchange="App.setSidebarBehavior(this.value)" ' + (!state.settings.showSidebar && !state.settings.sidebarExpandOnHover ? 'checked' : '') + '><span>Always Closed</span></label></div></div>' +
+            '<div><p class="section-label" style="margin:0 0 8px">Accessibility Mode</p><div class="radio-group-pills"><label class="radio-label-pill"><input type="radio" name="accessibilityMode" value="default" onchange="App.setAccessibilityMode(this.value)" ' + (state.settings.accessibilityMode === "default" ? 'checked' : '') + '><span>Default</span></label><label class="radio-label-pill"><input type="radio" name="accessibilityMode" value="highContrast" onchange="App.setAccessibilityMode(this.value)" ' + (state.settings.accessibilityMode === "highContrast" ? 'checked' : '') + '><span>High Contrast</span></label><label class="radio-label-pill"><input type="radio" name="accessibilityMode" value="reducedMotion" onchange="App.setAccessibilityMode(this.value)" ' + (state.settings.accessibilityMode === "reducedMotion" ? 'checked' : '') + '><span>Reduced Motion</span></label></div></div>' +
+            '<div><p class="section-label" style="margin:0 0 8px">Default Landing Tab</p><select class="input" onchange="App.setDefaultLandingTab(this.value)">' + ['dashboard', 'schedule', 'budget', 'tasks', 'calendar', 'settings'].map(function(tab) { return '<option value="' + tab + '" ' + (state.settings.defaultLandingTab === tab ? 'selected' : '') + '>' + tab.charAt(0).toUpperCase() + tab.slice(1) + '</option>'; }).join('') + '</select></div>' +
+            '</div></div>' +
+            '<div class="card"><h3 class="card-title">Dashboard Widgets</h3><div style="display:grid;gap:4px">' +
+            '<div class="setting-switch-row"><span>Money Monitor</span><label class="switch"><input type="checkbox" ' + (state.settings.showDashboardMoneyMonitor ? 'checked' : '') + ' onchange="App.toggleSetting(\'showDashboardMoneyMonitor\')"><span class="slider"></span></label></div>' +
+            '<div class="setting-switch-row"><span>Expense Breakdown</span><label class="switch"><input type="checkbox" ' + (state.settings.showDashboardExpenseBreakdown ? 'checked' : '') + ' onchange="App.toggleSetting(\'showDashboardExpenseBreakdown\')"><span class="slider"></span></label></div>' +
+            '<div class="setting-switch-row"><span>Mini Calendar</span><label class="switch"><input type="checkbox" ' + (state.settings.showDashboardMiniCalendar ? 'checked' : '') + ' onchange="App.toggleSetting(\'showDashboardMiniCalendar\')"><span class="slider"></span></label></div>' +
+            '<div class="setting-switch-row"><span>Today\'s Schedule Timeline</span><label class="switch"><input type="checkbox" ' + (state.settings.showScheduleTimeline ? 'checked' : '') + ' onchange="App.toggleSetting(\'showScheduleTimeline\')"><span class="slider"></span></label></div>' +
+            '</div></div>' +
+        '</div>';
+    } else if (ui.settingsTab === 'tasks') {
+        html += '<div>' +
+            '<div class="card"><h3 class="card-title">Task settings</h3>' +
+            '<div style="display:grid;gap:18px">' +
+            '<div><p class="section-label" style="margin:0 0 8px">Task categories</p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' + taskCategories.map(function (category) { return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(category) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeTaskCategory(\'' + escapeHtml(category).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>'; }).join("") + '</div><div style="display:flex;gap:8px"><input id="task-category-input" class="input" placeholder="Add task category" /><button class="btn btn-sm" onclick="App.addTaskCategory()">Add</button></div></div>' +
+            '<div><p class="section-label" style="margin:0 0 8px">Priority categories</p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' + taskPriorities.map(function (priority) { return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(priority) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeTaskPriority(\'' + escapeHtml(priority).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>'; }).join("") + '</div><div style="display:flex;gap:8px"><input id="task-priority-input" class="input" placeholder="Add priority" /><button class="btn btn-sm" onclick="App.addTaskPriority()">Add</button></div></div>' +
+            '<div><p class="section-label" style="margin:0 0 8px">Task type</p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' + taskTypes.map(function (type) { return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(type) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeTaskType(\'' + escapeHtml(type).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>'; }).join("") + '</div><div style="display:flex;gap:8px"><input id="task-type-input" class="input" placeholder="Add task type" /><button class="btn btn-sm" onclick="App.addTaskType()">Add</button></div></div>' +
+            '</div></div>' +
+        '</div>';
+    } else if (ui.settingsTab === 'budget') {
+        html += '<div>' +
+            '<div class="card"><h3 class="card-title">Budget categories & payment methods</h3>' +
+            '<div style="display:grid;gap:18px">' +
+            '<div><p class="section-label" style="margin:0 0 8px">Expense categories</p><div style="display:flex;flex-wrap:wrap;gap:8px">' + getBudgetCategories().map(function (category) { return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(category) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeBudgetCategory(\'' + escapeHtml(category).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>'; }).join("") + '</div><div style="display:flex;gap:8px;margin-top:10px"><input id="budget-category-input" class="input" placeholder="Add category" /><button class="btn btn-sm" onclick="App.addBudgetCategory()">Add</button></div></div>' +
+            '<div><p class="section-label" style="margin:0 0 8px">Payment methods</p><div style="display:flex;flex-wrap:wrap;gap:8px">' + getPaymentMethods().map(function (method) { return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(method) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removePaymentMethod(\'' + escapeHtml(method).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>'; }).join("") + '</div><div style="display:flex;gap:8px;margin-top:10px"><input id="payment-method-input" class="input" placeholder="Add method" /><button class="btn btn-sm" onclick="App.addPaymentMethod()">Add</button></div></div>' +
+            '</div></div>' +
+        '</div>';
+    }
 
-      // --- Existing Task Settings ---
-      '<div class="card"><h3 class="card-title">Task settings</h3>' +
-      '<div style="display:grid;gap:18px">' +
-      '<div><p class="section-label" style="margin:0 0 8px">Task categories</p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' + taskCategories.map(function (category) {
-        return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(category) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeTaskCategory(\'' + escapeHtml(category).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>';
-      }).join("") + '</div><div style="display:flex;gap:8px"><input id="task-category-input" class="input" placeholder="Add task category" /><button class="btn btn-sm" onclick="App.addTaskCategory()">Add</button></div></div>' +
-      '<div><p class="section-label" style="margin:0 0 8px">Priority categories</p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' + taskPriorities.map(function (priority) {
-        return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(priority) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeTaskPriority(\'' + escapeHtml(priority).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>';
-      }).join("") + '</div><div style="display:flex;gap:8px"><input id="task-priority-input" class="input" placeholder="Add priority" /><button class="btn btn-sm" onclick="App.addTaskPriority()">Add</button></div></div>' +
-      '<div><p class="section-label" style="margin:0 0 8px">Task type</p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' + taskTypes.map(function (type) {
-        return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(type) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeTaskType(\'' + escapeHtml(type).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>';
-      }).join("") + '</div><div style="display:flex;gap:8px"><input id="task-type-input" class="input" placeholder="Add task type" /><button class="btn btn-sm" onclick="App.addTaskType()">Add</button></div></div>' +
-      '</div>' +
-      '</div>' +
-      '<div class="card"><h3 class="card-title">Budget categories & payment methods</h3>' +
-      '<div style="display:grid;gap:18px">' +
-      // Removed the "Total Budget" input field from settings
-      '<div><p class="section-label" style="margin:0 0 8px">Expense categories</p><div style="display:flex;flex-wrap:wrap;gap:8px">' + getBudgetCategories().map(function (category) {
-        return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(category) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removeBudgetCategory(\'' + escapeHtml(category).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>';
-      }).join("") + '</div><div style="display:flex;gap:8px;margin-top:10px"><input id="budget-category-input" class="input" placeholder="Add category" /><button class="btn btn-sm" onclick="App.addBudgetCategory()">Add</button></div></div>' +
-      '<div><p class="section-label" style="margin:0 0 8px">Payment methods</p><div style="display:flex;flex-wrap:wrap;gap:8px">' + getPaymentMethods().map(function (method) {
-        return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(method) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removePaymentMethod(\'' + escapeHtml(method).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>';
-      }).join("") + '</div><div style="display:flex;gap:8px;margin-top:10px"><input id="payment-method-input" class="input" placeholder="Add method" /><button class="btn btn-sm" onclick="App.addPaymentMethod()">Add</button></div></div>' +
-      '</div></div>' +
-      '</div>';
+    return html;
   }
 
   /* ---------------- Dashboard ---------------- */
   function renderDashboard() {
+    var totalIncome = state.transactions.filter(function (t) { return t.type === "Income"; }).reduce(function (s, t) { return s + Number(t.amount); }, 0);
     var totalExpenses = state.transactions.filter(function (t) { return t.type === "Expense"; }).reduce(function (s, t) { return s + Number(t.amount); }, 0);
-    var totalAvailable = getCurrentBudget(); // This is the sum of on-hand and online
-    var remaining = totalAvailable - totalExpenses;
+    var remaining = totalIncome - totalExpenses;
     
-    var currentBalance = totalAvailable; // For consistency with previous usage
-    var pctUsed = totalAvailable > 0 ? Math.min(100, (totalExpenses / Math.max(totalAvailable, 1)) * 100) : 0;
+    // The progress bar should show expenses relative to income.
+    // If there's no income, any expense is 100% of the "budget".
+    var pctUsed = totalIncome > 0 ? Math.min(100, (totalExpenses / Math.max(totalIncome, 1)) * 100) : (totalExpenses > 0 ? 100 : 0);
     var low = pctUsed >= 80;
 
     var upcoming = state.tasks
@@ -934,7 +895,7 @@
       '<p class="section-label" style="margin:0">Finances</p>' +
       '<button class="btn-pill" onclick="App.setTab(\'budget\')">Full budget ' + icon("arrowUpRight", 12) + '</button></div>';
     html += '<div class="grid grid-3">';
-    html += '<div class="metric"><p class="metric-label">Total available</p><p class="metric-value">' + fmtMoney(totalAvailable) + '</p></div>';
+    html += '<div class="metric"><p class="metric-label">Total income</p><p class="metric-value">' + fmtMoney(totalIncome) + '</p></div>';
     html += '<div class="metric"><p class="metric-label">Total expenses</p><p class="metric-value danger">' + fmtMoney(totalExpenses) + '</p></div>';
     html += '<div class="metric">' +
       '<p class="metric-label">Remaining balance</p>' +
@@ -975,48 +936,29 @@
 
   function renderScheduleTimeline() {
     var now = new Date();
-    var nowMinutes = now.getHours() * 60 + now.getMinutes();
     var dow = now.getDay();
-    var startMin = 7 * 60, endMin = 22 * 60, totalMin = endMin - startMin;
-    var showNowLine = nowMinutes >= startMin && nowMinutes <= endMin;
-    var todaysCourses = state.courses.filter(function (c) { return c.days.indexOf(dow) !== -1; });
+    var todayDateKey = todayStr();
 
-    if (todaysCourses.length === 0) {
-      return '<div class="card timeline-wrap" style="padding:0">' +
-        '<div class="timeline-head">' +
-        '<h3 class="card-title" style="margin:0">' + icon("clock", 16) + ' Today &middot; ' + DAY_LABELS[dow] + '</h3>' +
-        '<span style="font-size:11px;color:var(--text-faint);font-family:monospace">' + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + '</span>' +
-        '</div>' +
-        '<div class="timeline-empty-wrap"><div class="timeline-empty">No classes scheduled today.</div></div>' +
-        '</div>';
+    // Check for items to determine which view to render
+    var d = new Date(todayDateKey + "T00:00:00");
+    var hasItems = state.courses.some(function (course) { return course.days.indexOf(d.getDay()) !== -1; }) ||
+                   state.tasks.some(function (t) { return t.dueDate === todayDateKey; });
+
+    var bodyHtml;
+    if (hasItems) {
+      // If there are items, render the detailed list inside a scrollable container
+      bodyHtml = '<div class="timeline-day-view-body">' + renderDayDetailList(todayDateKey) + '</div>';
+    } else {
+      // Otherwise, render a clean empty state
+      bodyHtml = '<div class="timeline-empty-wrap"><div class="timeline-empty">No classes or tasks scheduled today.</div></div>';
     }
 
-    var ticks = TIME_SLOTS.map(function (slot) {
-      var top = ((minutesOf(slot) - startMin) / totalMin) * 100;
-      var isHour = slot.slice(-2) === "00";
-      return '<div class="tick" style="top:' + top + '%">' +
-        '<span class="tick-label">' + (isHour ? fmtTime12(slot) : "") + '</span>' +
-        '<div class="tick-line ' + (isHour ? "hour" : "") + '"></div></div>';
-    }).join("");
-
-    var blocks = todaysCourses.map(function (c) {
-      var top = ((minutesOf(c.startTime) - startMin) / totalMin) * 100;
-      var height = Math.max(((minutesOf(c.endTime) - minutesOf(c.startTime)) / totalMin) * 100, 6);
-      var color = c.color || COURSE_COLORS[0];
-      return '<div class="course-block" style="top:' + top + '%;height:' + height + '%;border-left-color:' + color + ';background:' + hexToRgba(color, 0.14) + ';color:' + color + '" title="' + escapeHtml(c.name) + ' | ' + fmtTime12(c.startTime) + ' - ' + fmtTime12(c.endTime) + '" onclick="App.openCourseModal(\'' + c.id + '\')" tabindex="0" onkeydown="if(event.key===\'Enter\'){App.openCourseModal(\'' + c.id + '\');}">' +
-        '<p class="cb-title">' + escapeHtml(c.name) + ' <span style="font-weight:400;opacity:.8">' + escapeHtml(c.code) + '</span></p>' +
-        '<p class="cb-sub" style="opacity:0.8">' + escapeHtml(c.professor) + ' &middot; ' + (c.modality === "Online" ? "Online" : escapeHtml(c.room)) + '</p>' +
-        '<p class="cb-time" style="opacity:0.7">' + fmtTime12(c.startTime) + ' - ' + fmtTime12(c.endTime) + '</p></div>';
-    }).join("");
-
-    var nowLine = showNowLine ? '<div class="now-line" style="top:' + (((nowMinutes - startMin) / totalMin) * 100) + '%"><div class="now-dot"></div><div class="now-rule"></div></div>' : "";
-
-    return '<div class="card timeline-wrap" style="padding:0">' +
+    return '<div class="card" style="padding:0;">' +
       '<div class="timeline-head">' +
-      '<h3 class="card-title" style="margin:0">' + icon("clock", 16) + ' Today &middot; ' + DAY_LABELS[dow] + '</h3>' +
-      '<span style="font-size:11px;color:var(--text-faint);font-family:monospace">' + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + '</span>' +
+        '<h3 class="card-title" style="margin:0">' + icon("clock", 16) + ' Today &middot; ' + DAY_LABELS[dow] + '</h3>' +
+        '<span style="font-size:11px;color:var(--text-faint);font-family:monospace">' + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + '</span>' +
       '</div>' +
-      '<div class="timeline-body"><div class="timeline-track">' + ticks + blocks + nowLine + '</div></div>' +
+      bodyHtml +
       '</div>';
   }
 
@@ -1105,14 +1047,14 @@
             '<div>' + (course.modality === "Online" ? icon("video", 13) : icon("mapPin", 13)) + '<span>' + modality + (room ? ' &middot; ' + room : '') + '</span></div>' +
         '</div>' +
         '<div class="course-card-actions">' +
-            '<button class="btn-ghost btn-sm" onclick="App.openCourseModal(\'' + course.id + '\')" style="color: ' + hexToRgba(contrastColor, 0.9) + '; border-color: ' + hexToRgba(contrastColor, 0.3) + ';">Edit</button>' +
-            '<button class="btn-danger-outline btn-sm" onclick="App.deleteCourseWithConfirmation(\'' + course.id + '\')">Delete</button>' +
+            '<button class="btn-edit-solid" onclick="App.openCourseModal(\'' + course.id + '\')">Edit</button>' +
+            '<button class="btn-delete-solid" onclick="App.deleteCourseWithConfirmation(\'' + course.id + '\')">Delete</button>' +
         '</div>' +
     '</div>';
   }
 
   function renderCourseCards() {
-    var html = '<div class="grid grid-3" style="align-items:start">';
+    var html = '<div class="grid grid-3">';
     state.courses.forEach(function(course) {
         if (course && typeof course === 'object') { // Ensure course is a valid object before rendering
             html += renderSingleCourseCard(course);
@@ -1179,6 +1121,7 @@
 
   /* ---------------- Budget Tracker ---------------- */
   function renderBudget() {
+    var view = ui.budgetView;
     var now = new Date();
     var year = ui.budgetYear, month = ui.budgetMonth;
 
@@ -1187,6 +1130,23 @@
       return d.getFullYear() === year && d.getMonth() === month;
     });
     var yearTx = state.transactions.filter(function (t) { return new Date(t.date + "T00:00:00").getFullYear() === year; });
+
+    // Apply search and date filters to the transaction list for the current month
+    var displayedTx = monthTx;
+    if (ui.budgetDateFilter) {
+        displayedTx = displayedTx.filter(function(t) {
+            return t.date === ui.budgetDateFilter;
+        });
+    }
+    if (ui.budgetSearchQuery) {
+        var query = ui.budgetSearchQuery.toLowerCase().trim();
+        if (query) {
+            displayedTx = displayedTx.filter(function(t) {
+                return (t.item && t.item.toLowerCase().startsWith(query)) ||
+                       (t.category && t.category.toLowerCase().startsWith(query));
+            });
+        }
+    }
 
     var monthIncome = monthTx.filter(function (t) { return t.type === "Income"; }).reduce(function (s, t) { return s + Number(t.amount); }, 0);
     var monthExpense = monthTx.filter(function (t) { return t.type === "Expense"; }).reduce(function (s, t) { return s + Number(t.amount); }, 0);
@@ -1233,89 +1193,118 @@
     var budgetCategoryList = getBudgetCategories();
     var paymentList = getPaymentMethods();
 
-    var html = '<div class="toolbar">' +
+    var viewSwitcher = '<div class="view-switch">' +
+      ['overview', 'transactions'].map(function (v) {
+        var labels = { overview: "Overview", transactions: "Transactions" };
+        return '<button class="' + (view === v ? "active" : "") + '" onclick="App.setBudgetView(\'' + v + '\')">' + labels[v] + '</button>';
+      }).join("") +
+    '</div>';
+
+    var filterControls = '';
+    if (view === 'transactions') {
+      filterControls = '<input id="budget-search-input" class="input" type="search" placeholder="Search items..." style="width:180px" oninput="App.setBudgetSearch(this.value)" value="' + escapeHtml(ui.budgetSearchQuery) + '">' +
+      '<input class="input" type="date" onchange="App.setBudgetDateFilter(this.value)" value="' + escapeHtml(ui.budgetDateFilter) + '">' +
+      (ui.budgetSearchQuery || ui.budgetDateFilter ? '<button class="icon-btn" title="Clear filters" onclick="App.clearBudgetFilters()">' + icon("x", 16) + '</button>' : '');
+    }
+
+    var html = '<div class="toolbar">' + // Toolbar without search/date filters
       '<h2 style="margin:0;font-size:18px">Budget tracker</h2>' +
       '<div class="toolbar-right">' +
+      viewSwitcher +
       '<select class="input" style="width:140px" onchange="App.setBudgetMonth(this.value)">' + MONTH_NAMES.map(function (m, i) { return '<option value="' + i + '" ' + (i === month ? "selected" : "") + '>' + m + '</option>'; }).join("") + '</select>' +
       '<select class="input" style="width:100px" onchange="App.setBudgetYear(this.value)">' + yearOptions.map(function (y) { return '<option value="' + y + '" ' + (y === year ? "selected" : "") + '>' + y + '</option>'; }).join("") + '</select>' +
       '<button class="btn" onclick="App.openTransactionModal()">' + icon("plus", 16) + ' Add</button>' +
       '</div></div>';
 
-    html += '<div class="grid grid-4">';
-    html += '<div class="metric"><p class="metric-label">Monthly income</p><p class="metric-value">' + fmtMoney(monthIncome) + '</p></div>';
-    html += '<div class="metric"><p class="metric-label">Monthly expenses</p><p class="metric-value danger">' + fmtMoney(monthExpense) + '</p></div>';
-    html += '<div class="metric"><p class="metric-label">Monthly balance</p><p class="metric-value ' + (monthIncome - monthExpense < 0 ? "danger" : "") + '">' + fmtMoney(monthIncome - monthExpense) + '</p></div>';
-    html += '<div class="metric"><p class="metric-label">Total available</p><p class="metric-value">' + fmtMoney(currentBalance) + '</p></div>';
-    html += '</div>';
-
-    html += '<div class="grid grid-2" style="margin-top:16px;align-items:start">';
-    html += '<div class="card"><h3 class="card-title">Money monitor</h3>' +
-      '<div class="metric" style="margin-bottom:12px;padding:16px"><p class="metric-label">On-hand</p><p class="metric-value">' + fmtMoney(accountSnapshot.onHand) + '</p></div>' +
-      '<div class="metric" style="margin-bottom:12px;padding:16px"><p class="metric-label">Online</p><p class="metric-value" style="color:var(--sky)">' + fmtMoney(accountSnapshot.online) + '</p></div>' +
-      '<div class="metric" style="padding:16px"><p class="metric-label">Total available</p><p class="metric-value">' + fmtMoney(currentBalance) + '</p></div>' +
+    if (view === 'transactions') {
+      html += '<div class="budget-search-bar">' +
+        '<div class="budget-search-text-wrapper">' +
+          icon("search", 18, "budget-search-icon") +
+          '<input id="budget-search-input" class="input" type="search" placeholder="Search items or categories..." oninput="App.setBudgetSearch(this.value)" value="' + escapeHtml(ui.budgetSearchQuery) + '">' +
+        '</div>' +
+        '<input class="input" type="date" onchange="App.setBudgetDateFilter(this.value)" value="' + escapeHtml(ui.budgetDateFilter) + '">' +
+        (ui.budgetSearchQuery || ui.budgetDateFilter ? '<button class="icon-btn" title="Clear filters" onclick="App.clearBudgetFilters()">' + icon("x", 16) + '</button>' : '') +
       '</div>';
-
-    html += '<div class="card"><h3 class="card-title">Expense breakdown (' + MONTH_NAMES[month] + ')</h3>';
-    if (pieData.length === 0) {
-      html += '<p class="empty-note">No expenses recorded this month.</p>';
-    } else {
-      var gradientParts = [];
-      var acc = 0;
-      pieData.forEach(function (p, i) {
-        var pct = (p.value / pieTotal) * 100;
-        var color = PIE_COLORS[i % PIE_COLORS.length];
-        gradientParts.push(color + " " + acc + "% " + (acc + pct) + "%");
-        acc += pct;
-      });
-      html += '<div class="pie-wrap">' +
-        '<div class="pie-circle" style="background:conic-gradient(' + gradientParts.join(", ") + ')"></div>' +
-        '<div class="pie-legend">' + pieData.map(function (p, i) {
-          var pct = ((p.value / pieTotal) * 100).toFixed(0);
-          return '<div class="pie-legend-item"><span class="pie-legend-swatch" style="background:' + PIE_COLORS[i % PIE_COLORS.length] + '"></span>' + p.name + ' — <b>' + fmtMoney(p.value) + '</b> (' + pct + '%)</div>';
-        }).join("") + '</div></div>';
     }
-    html += '</div>';
-    html += '</div>';
 
-    html += '<div class="grid grid-2" style="margin-top:16px;align-items:start">';
-    html += '<div class="card"><h3 class="card-title">Monthly expenses comparison</h3>' +
-      (comparisonRows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Category</th><th>Last month</th><th>This month</th><th>Change</th></tr></thead><tbody>' + comparisonRows.map(function (row) {
-        return '<tr><td>' + escapeHtml(row.name) + '</td><td>' + fmtMoney(row.prev) + '</td><td>' + fmtMoney(row.curr) + '</td><td class="' + (row.delta >= 0 ? "amount-neg" : "amount-pos") + '">' + (row.delta >= 0 ? "+" : "-") + fmtMoney(Math.abs(row.delta)) + '</td></tr>';
-      }).join("") + '</tbody></table></div>' : '<p class="empty-note">No expense history to compare yet.</p>') +
-      '</div>';
+    if (view === 'transactions') {
+      html += '<div class="card table-wrap" style="padding:0">' +
+        '<h3 class="card-title" style="padding:16px 16px 0">Transactions</h3>' +
+        '<table class="data-table"><thead><tr><th>Date</th><th>Category</th><th>Item</th><th>Type</th><th>Method</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>';
+      var sortedTx = displayedTx.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
+      if (sortedTx.length === 0) {
+        var emptyMessage = (ui.budgetSearchQuery || ui.budgetDateFilter) ? "No transactions match your filters." : "No transactions this month.";
+        html += '<tr><td colspan="7" class="table-empty">' + emptyMessage + '</td></tr>';
+      } else {
+        sortedTx.forEach(function (t) {
+          html += '<tr><td style="font-family:monospace;font-size:12px;color:var(--text-faint)">' + t.date + '</td>' +
+            '<td>' + escapeHtml(t.category) + '</td><td>' + escapeHtml(t.item) + '</td>' +
+            '<td><span class="badge ' + (t.type === "Income" ? "badge-income" : "badge-expense") + '">' + t.type + '</span></td>' +
+            '<td style="color:var(--text-muted)">' + escapeHtml(t.method) + '</td>' +
+            '<td style="text-align:right" class="' + (t.type === "Income" ? "amount-pos" : "amount-neg") + '">' + (t.type === "Income" ? "+" : "-") + fmtMoney(t.amount) + '</td>' +
+            '<td style="text-align:right"><button class="icon-trash" onclick="App.deleteTransaction(\'' + t.id + '\')">' + icon("trash", 14) + '</button></td></tr>';
+        });
+      }
+      html += '</tbody></table></div>';
+    } else { // Overview
+      html += '<div class="grid grid-4">';
+      html += '<div class="metric"><p class="metric-label">Monthly income</p><p class="metric-value">' + fmtMoney(monthIncome) + '</p></div>';
+      html += '<div class="metric"><p class="metric-label">Monthly expenses</p><p class="metric-value danger">' + fmtMoney(monthExpense) + '</p></div>';
+      html += '<div class="metric"><p class="metric-label">Monthly balance</p><p class="metric-value ' + (monthIncome - monthExpense < 0 ? "danger" : "") + '">' + fmtMoney(monthIncome - monthExpense) + '</p></div>';
+      html += '<div class="metric"><p class="metric-label">Total available</p><p class="metric-value">' + fmtMoney(currentBalance) + '</p></div>';
+      html += '</div>';
 
-    html += '<div class="card"><h3 class="card-title">Annual cash flow (' + year + ')</h3>' + renderLineChart(monthlyFlow) + '</div>';
-    html += '</div>';
+      html += '<div class="grid grid-2" style="margin-top:16px;align-items:start">';
+      html += '<div class="card"><h3 class="card-title">Money monitor</h3>' +
+        '<div class="metric" style="margin-bottom:12px;padding:16px"><p class="metric-label">On-hand</p><p class="metric-value">' + fmtMoney(accountSnapshot.onHand) + '</p></div>' +
+        '<div class="metric" style="margin-bottom:12px;padding:16px"><p class="metric-label">Online</p><p class="metric-value" style="color:var(--sky)">' + fmtMoney(accountSnapshot.online) + '</p></div>' +
+        '<div class="metric" style="padding:16px"><p class="metric-label">Total available</p><p class="metric-value">' + fmtMoney(currentBalance) + '</p></div>' +
+        '</div>';
 
-    html += '<div class="grid grid-2" style="margin-top:16px;align-items:start">';
-    html += '<div class="card"><h3 class="card-title">Yearly expenses by category</h3>' +
-      (yearlyRows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Category</th><th>Total</th></tr></thead><tbody>' + yearlyRows.map(function (row) {
-        return '<tr><td>' + escapeHtml(row.name) + '</td><td class="amount-neg">' + fmtMoney(row.value) + '</td></tr>';
-      }).join("") + '</tbody></table></div>' : '<p class="empty-note">No yearly expense data yet.</p>') +
-      '</div>';
-    html += '<div class="card"><h3 class="card-title">Quick summary</h3>' +
-      '<div style="display:grid;gap:12px"><div class="metric" style="padding:16px"><p class="metric-label">Current balance</p><p class="metric-value">' + fmtMoney(currentBalance) + '</p></div>' +
-      '<div class="metric" style="padding:16px"><p class="metric-label">Top expense category</p><p class="metric-value danger">' + (topCategory ? escapeHtml(topCategory.name) : "—") + '</p></div></div>' +
-      '</div>';
-    html += '</div>';
+      html += '<div class="card"><h3 class="card-title">Expense breakdown (' + MONTH_NAMES[month] + ')</h3>';
+      if (pieData.length === 0) {
+        html += '<p class="empty-note">No expenses recorded this month.</p>';
+      } else {
+        var gradientParts = [];
+        var acc = 0;
+        pieData.forEach(function (p, i) {
+          var pct = (p.value / pieTotal) * 100;
+          var color = PIE_COLORS[i % PIE_COLORS.length];
+          gradientParts.push(color + " " + acc + "% " + (acc + pct) + "%");
+          acc += pct;
+        });
+        html += '<div class="pie-wrap">' +
+          '<div class="pie-circle" style="background:conic-gradient(' + gradientParts.join(", ") + ')"></div>' +
+          '<div class="pie-legend">' + pieData.map(function (p, i) {
+            var pct = ((p.value / pieTotal) * 100).toFixed(0);
+            return '<div class="pie-legend-item"><span class="pie-legend-swatch" style="background:' + PIE_COLORS[i % PIE_COLORS.length] + '"></span>' + p.name + ' — <b>' + fmtMoney(p.value) + '</b> (' + pct + '%)</div>';
+          }).join("") + '</div></div>';
+      }
+      html += '</div>';
+      html += '</div>';
 
-    html += '<div class="card table-wrap" style="margin-top:16px;padding:0">' +
-      '<h3 class="card-title" style="padding:16px 16px 0">Transactions</h3>' +
-      '<table class="data-table"><thead><tr><th>Date</th><th>Category</th><th>Item</th><th>Type</th><th>Method</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>';
-    var sortedTx = monthTx.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
-    if (sortedTx.length === 0) {
-      html += '<tr><td colspan="7" class="table-empty">No transactions this month.</td></tr>';
-    } else {
-      sortedTx.forEach(function (t) {
-        html += '<tr><td style="font-family:monospace;font-size:12px;color:var(--text-faint)">' + t.date + '</td>' +
-          '<td>' + escapeHtml(t.category) + '</td><td>' + escapeHtml(t.item) + '</td>' +
-          '<td><span class="badge ' + (t.type === "Income" ? "badge-income" : "badge-expense") + '">' + t.type + '</span></td>' +
-          '<td style="color:var(--text-muted)">' + escapeHtml(t.method) + '</td>' +
-          '<td style="text-align:right" class="' + (t.type === "Income" ? "amount-pos" : "amount-neg") + '">' + (t.type === "Income" ? "+" : "-") + fmtMoney(t.amount) + '</td>' +
-          '<td style="text-align:right"><button class="icon-trash" onclick="App.deleteTransaction(\'' + t.id + '\')">' + icon("trash", 14) + '</button></td></tr>';
-      });
+      html += '<div class="grid grid-2" style="margin-top:16px;align-items:start">';
+      html += '<div class="card"><h3 class="card-title">Monthly expenses comparison</h3>' +
+        (comparisonRows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Category</th><th>Last month</th><th>This month</th><th>Change</th></tr></thead><tbody>' + comparisonRows.map(function (row) {
+          return '<tr><td>' + escapeHtml(row.name) + '</td><td>' + fmtMoney(row.prev) + '</td><td>' + fmtMoney(row.curr) + '</td><td class="' + (row.delta >= 0 ? "amount-neg" : "amount-pos") + '">' + (row.delta >= 0 ? "+" : "-") + fmtMoney(Math.abs(row.delta)) + '</td></tr>';
+        }).join("") + '</tbody></table></div>' : '<p class="empty-note">No expense history to compare yet.</p>') +
+        '</div>';
+
+      html += '<div class="card"><h3 class="card-title">Annual cash flow (' + year + ')</h3>' + renderLineChart(monthlyFlow) + '</div>';
+      html += '</div>';
+
+      html += '<div class="grid grid-2" style="margin-top:16px;align-items:start">';
+      html += '<div class="card"><h3 class="card-title">Yearly expenses by category</h3>' +
+        (yearlyRows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Category</th><th>Total</th></tr></thead><tbody>' + yearlyRows.map(function (row) {
+          return '<tr><td>' + escapeHtml(row.name) + '</td><td class="amount-neg">' + fmtMoney(row.value) + '</td></tr>';
+        }).join("") + '</tbody></table></div>' : '<p class="empty-note">No yearly expense data yet.</p>') +
+        '</div>';
+      html += '<div class="card"><h3 class="card-title">Quick summary</h3>' +
+        '<div style="display:grid;gap:12px"><div class="metric" style="padding:16px"><p class="metric-label">Current balance</p><p class="metric-value">' + fmtMoney(currentBalance) + '</p></div>' +
+        '<div class="metric" style="padding:16px"><p class="metric-label">Top expense category</p><p class="metric-value danger">' + (topCategory ? escapeHtml(topCategory.name) : "—") + '</p></div></div>' +
+        '</div>';
+      html += '</div>';
     }
-    html += '</tbody></table></div>';
 
     return html;
   }
@@ -2310,8 +2299,32 @@
         showToast("Transaction for '" + transactionItem + "' deleted.", "success");
       });
     },
+    setSettingsTab: function (v) { ui.settingsTab = v; render(); },
+    setBudgetView: function (v) { ui.budgetView = v; render(); },
     setBudgetMonth: function (v) { ui.budgetMonth = Number(v); render(); },
     setBudgetYear: function (v) { ui.budgetYear = Number(v); render(); },
+    setBudgetSearch: function (query) {
+      var searchInput = document.getElementById('budget-search-input');
+      var cursorPos = searchInput ? searchInput.selectionStart : 0;
+      ui.budgetSearchQuery = query;
+      render();
+      setTimeout(function() {
+        var newSearchInput = document.getElementById('budget-search-input');
+        if (newSearchInput) {
+          newSearchInput.focus();
+          newSearchInput.setSelectionRange(cursorPos, cursorPos);
+        }
+      }, 0);
+    },
+    setBudgetDateFilter: function (date) {
+      ui.budgetDateFilter = date;
+      render();
+    },
+    clearBudgetFilters: function () {
+      ui.budgetSearchQuery = "";
+      ui.budgetDateFilter = "";
+      render();
+    },
     toggleEditBudget: function () { ui.editingBudget = true; render(); },
     commitBudget: function () {
       var input = document.getElementById("budget-input");
