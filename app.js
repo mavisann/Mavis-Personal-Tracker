@@ -153,7 +153,6 @@
   /* ---------------- State ---------------- */
   var state = { courses: [], tasks: [], transactions: [], toasts: [], settings: {
     theme: "light",
-    totalBudget: 8000,
     appName: "Mavis",
     budgetCategories: DEFAULT_BUDGET_CATEGORIES.slice(),
     paymentMethods: DEFAULT_PAYMENT_METHODS.slice(),
@@ -201,7 +200,6 @@
   function defaultSettings() {
     return {
       theme: "light",
-      totalBudget: 8000,
       appName: "Mavis",
       budgetCategories: DEFAULT_BUDGET_CATEGORIES.slice(),
       paymentMethods: DEFAULT_PAYMENT_METHODS.slice(),
@@ -247,20 +245,34 @@
   }
 
   function normalizeCourseForUi(course) {
-    return {
+    var normalized = {
       id: course.id,
       name: course.name,
       code: course.code,
       professor: course.professor,
-      days: course.days || [],
-      startTime: course.start_time || "09:00",
-      endTime: course.end_time || "10:00",
       startDate: toInputDateString(course.start_date),
       endDate: toInputDateString(course.end_date),
-      modality: course.modality,
-      room: course.room,
-      color: course.color
+      color: course.color,
+      schedules: course.schedules || []
     };
+
+    // Backward compatibility for data from DB that might be in old format
+    if (course.days && (!course.schedules || course.schedules.length === 0)) {
+        normalized.schedules = [{
+            days: course.days || [],
+            startTime: course.start_time || "09:00",
+            endTime: course.end_time || "10:00",
+            modality: course.modality || "On-Site",
+            room: course.room || ""
+        }];
+    }
+
+    // Ensure every schedule has default values
+    normalized.schedules = normalized.schedules.map(function(s) {
+      return Object.assign({ days: [], startTime: "09:00", endTime: "10:00", modality: "On-Site", room: "" }, s);
+    });
+
+    return normalized;
   }
 
   function normalizeTaskForUi(task) {
@@ -304,7 +316,7 @@
 
     try {
       var results = await Promise.all([
-        client.from("courses").select("*").order("start_time", { ascending: true }),
+        client.from("courses").select("*"),
         client.from("tasks").select("*").order("due_date", { ascending: true }),
         client.from("transactions").select("*").order("date", { ascending: true }),
         client.from("board_settings").select("*").limit(1)
@@ -321,7 +333,6 @@
       if (settingsData) {
         state.settings = Object.assign(defaultSettings(), {
           theme: settingsData.theme,
-          // totalBudget: settingsData["totalBudget"], // Removed as it's no longer a user-editable setting
           appName: settingsData["appName"],
           budgetCategories: settingsData["budgetCategories"],
           paymentMethods: settingsData["paymentMethods"],
@@ -355,7 +366,6 @@
     return {
       id: "board",
       theme: s.theme,
-      "totalBudget": s.totalBudget,
       "appName": s.appName,
       "budgetCategories": s.budgetCategories,
       "paymentMethods": s.paymentMethods,
@@ -403,11 +413,14 @@
     if (!client) return;
 
     var courseRows = state.courses.map(function (course) {
+      // Prepare for DB: remove old top-level fields if they exist
       return {
         id: course.id, name: course.name, code: course.code, professor: course.professor,
-        days: course.days, start_time: course.startTime, end_time: course.endTime, // Ensure days are saved
-        start_date: toDateForDb(course.startDate), end_date: toDateForDb(course.endDate),
-        modality: course.modality, room: course.room, color: course.color
+        start_date: toDateForDb(course.startDate),
+        end_date: toDateForDb(course.endDate),
+        color: course.color,
+        // The schedules array is saved directly as JSONB
+        schedules: course.schedules || []
       };
     });
     var taskRows = state.tasks.map(function (task) {
@@ -549,7 +562,11 @@
     for (var d = 1; d <= daysInMonth; d++) {
       var dow = new Date(y, m, d).getDay();
       var set = {};
-      state.courses.forEach(function (c) { if (c.days.indexOf(dow) !== -1) set["Class"] = true; });
+      state.courses.forEach(function (c) {
+        if ((c.schedules || []).some(function(s) { return s.days.indexOf(dow) !== -1; })) {
+          set["Class"] = true;
+        }
+      });
       state.tasks.forEach(function (t) { if (t.dueDate === dateKey(y, m, d)) set[t.category] = true; });
       var keys = Object.keys(set);
       if (keys.length) dots[d] = keys;
@@ -941,8 +958,9 @@
 
     // Check for items to determine which view to render
     var d = new Date(todayDateKey + "T00:00:00");
-    var hasItems = state.courses.some(function (course) { return course.days.indexOf(d.getDay()) !== -1; }) ||
-                   state.tasks.some(function (t) { return t.dueDate === todayDateKey; });
+    var hasItems = state.courses.some(function (course) {
+        return (course.schedules || []).some(function(schedule) { return schedule.days.indexOf(d.getDay()) !== -1; });
+      }) || state.tasks.some(function (t) { return t.dueDate === todayDateKey; });
 
     var bodyHtml;
     if (hasItems) {
@@ -975,9 +993,11 @@
       var isToday = today.getFullYear() === cur.y && today.getMonth() === cur.m && today.getDate() === d;
       var dayKey = dateKey(cur.y, cur.m, d);
       var daySchedule = state.courses.filter(function (c) {
-        var dow = new Date(cur.y, cur.m, d).getDay();
-        return c.days.indexOf(dow) !== -1;
-      }).map(function (c) { return c.name + " " + fmtTime12(c.startTime) + "-" + fmtTime12(c.endTime); }); // No change here, this is for tooltip content
+          var dow = new Date(cur.y, cur.m, d).getDay();
+          return (c.schedules || []).some(function(s) { return s.days.indexOf(dow) !== -1; });
+      }).flatMap(function (c) {
+          return (c.schedules || []).filter(function(s) { return s.days.indexOf(new Date(cur.y, cur.m, d).getDay()) !== -1; }).map(function(s) { return c.name + " " + fmtTime12(s.startTime) + "-" + fmtTime12(s.endTime); });
+      });
       var taskSchedule = state.tasks.filter(function (t) { return t.dueDate === dayKey; }).map(function (t) {
         return (t.category || "Personal") + ": " + (t.title || "Task") + " " + (t.dueTime ? fmtTime12(t.dueTime) : "Any time");
       });
@@ -1023,14 +1043,17 @@
     var contrastColorFaint = hexToRgba(contrastColor, 0.7);
     var contrastColorMuted = hexToRgba(contrastColor, 0.8);
     var borderColor = hexToRgba(color, 0.5);
-
-    // Ensure course.days is an array before mapping, provide default if not
-    var days = Array.isArray(course.days) ? course.days.map(function(d) { return DAY_NAMES[d]; }).join(", ") : 'N/A';
-    var startTime = course.startTime ? fmtTime12(course.startTime) : 'N/A';
-    var endTime = course.endTime ? fmtTime12(course.endTime) : 'N/A';
     var professor = escapeHtml(course.professor || 'N/A');
-    var modality = escapeHtml(course.modality || 'N/A');
-    var room = escapeHtml(course.room || ''); // This is used in the meta section
+
+    var metaDetails = (course.schedules || []).map(function(s) {
+        var days = Array.isArray(s.days) ? s.days.map(function(d) { return DAY_NAMES[d]; }).join(", ") : 'N/A';
+        var time = (s.startTime ? fmtTime12(s.startTime) : 'N/A') + ' - ' + (s.endTime ? fmtTime12(s.endTime) : 'N/A');
+        var location = escapeHtml(s.modality || 'N/A') + (s.room ? ' &middot; ' + escapeHtml(s.room) : '');
+        var iconName = s.modality === "Online" ? "video" : "mapPin";
+        return '<div>' + icon("calendar", 13) + '<span>' + days + '</span></div>' +
+               '<div>' + icon("clock", 13) + '<span>' + time + '</span></div>' +
+               '<div>' + icon(iconName, 13) + '<span>' + location + '</span></div>';
+    }).join('<div class="course-meta-divider"></div>');
 
     return '<div class="course-card" style="background: radial-gradient(140% 140% at 0% 0%, ' + hexToRgba(color, 0.9) + ' 0%, ' + hexToRgba(color, 0.1) + ' 100%); border-color: ' + borderColor + '; color: ' + contrastColor + ';">' +
         '<div class="course-card-head">' +
@@ -1042,9 +1065,7 @@
         '</div>' +
         '<div class="course-meta" style="color: ' + contrastColorMuted + ';">' +
             '<div>' + icon("user", 13) + '<span>' + professor + '</span></div>' +
-            '<div>' + icon("clock", 13) + '<span>' + startTime + ' - ' + endTime + '</span></div>' +
-            '<div>' + icon("calendar", 13) + '<span>' + days + '</span></div>' +
-            '<div>' + (course.modality === "Online" ? icon("video", 13) : icon("mapPin", 13)) + '<span>' + modality + (room ? ' &middot; ' + room : '') + '</span></div>' +
+            metaDetails +
         '</div>' +
         '<div class="course-card-actions">' +
             '<button class="btn-edit-solid" onclick="App.openCourseModal(\'' + course.id + '\')">Edit</button>' +
@@ -1066,23 +1087,29 @@
 
   function renderCourseTable() {
     var byDay = [[], [], [], [], [], [], []];
-    state.courses.forEach(function (course) {
-      course.days.forEach(function (dayIndex) {
-        byDay[dayIndex].push(course);
-      });
+    state.courses.forEach(function(course) {
+        (course.schedules || []).forEach(function(schedule) {
+            schedule.days.forEach(function(dayIndex) {
+                // Push an object containing both course and the specific schedule
+                byDay[dayIndex].push({ course: course, schedule: schedule });
+            });
+        });
     });
+
     var hourRows = [];
     for (var hour = 7; hour <= 22; hour++) {
       var row = '<tr>' +
         '<td class="schedule-time">' + fmtTime12(pad2(hour) + ':00') + '</td>';
       for (var day = 0; day < 7; day++) {
-        var matches = byDay[day].filter(function (course) {
-          return minutesOf(course.startTime) < hour * 60 + 60 && minutesOf(course.endTime) > hour * 60;
+        var matches = byDay[day].filter(function (item) {
+          return minutesOf(item.schedule.startTime) < hour * 60 + 60 && minutesOf(item.schedule.endTime) > hour * 60;
         });
-        var cellHtml = matches.length ? matches.map(function (course) {
+        var cellHtml = matches.length ? matches.map(function (item) {
+          var course = item.course;
+          var schedule = item.schedule;
           var color = course.color || COURSE_COLORS[0];
           return '<div class="schedule-chip" style="background:' + hexToRgba(color, 0.12) + '; border-left: 3px solid ' + color + '; color:' + color + ';" onclick="App.openCourseModal(\'' + course.id + '\')" title="' + escapeHtml(course.name) + '">' +
-            '<strong>' + escapeHtml(course.code) + '</strong><span>' + escapeHtml(course.name) + '</span><small>' + fmtTime12(course.startTime) + '-' + fmtTime12(course.endTime) + '</small>' +
+            '<strong>' + escapeHtml(course.code) + '</strong><span>' + escapeHtml(course.name) + '</span><small>' + fmtTime12(schedule.startTime) + '-' + fmtTime12(schedule.endTime) + '</small>' +
             '</div>';
         }).join("") : "";
         row += '<td class="schedule-cell">' + cellHtml + '</td>';
@@ -1534,7 +1561,7 @@
       var items = [];
       if (state.settings.genCalShow.Class) {
         state.courses.forEach(function (c) {
-          if (c.days.indexOf(dow) !== -1) {
+          if ((c.schedules || []).some(function(s) { return s.days.indexOf(dow) !== -1; })) {
             items.push({
               type: "Class",
               label: (c.code || 'Course') + (c.professor ? ' (' + c.professor.split(' ').pop() + ')' : ''),
@@ -1585,9 +1612,14 @@
 
       // Tooltip logic from renderMiniCalendar
       var dowForDay = new Date(year, month, d).getDay();
-      var daySchedule = state.courses.filter(function (c) {
-          return c.days.indexOf(dowForDay) !== -1;
-      }).map(function (c) { return c.name + " " + fmtTime12(c.startTime) + "-" + fmtTime12(c.endTime); });
+      var daySchedule = [];
+      state.courses.forEach(function(c) {
+        (c.schedules || []).forEach(function(s) {
+          if (s.days.indexOf(dowForDay) !== -1) {
+            daySchedule.push(c.name + " " + fmtTime12(s.startTime) + "-" + fmtTime12(s.endTime));
+          }
+        });
+      });
       var taskSchedule = state.tasks.filter(function (t) { return t.dueDate === dayKey; }).map(function (t) {
           return (t.category || "Personal") + ": " + (t.title || "Task") + " " + (t.dueTime ? fmtTime12(t.dueTime) : "Any time");
       });
@@ -1637,8 +1669,15 @@
     });
     var weekKeys = days.map(function (d) { return dateKey(d.getFullYear(), d.getMonth(), d.getDate()); });
     var byDay = Array.from({ length: 7 }, function () { return []; });
-    state.courses.forEach(function (course) {
-      course.days.forEach(function (dayIndex) { byDay[dayIndex].push(course); });
+
+    state.courses.forEach(function(course) {
+        (course.schedules || []).forEach(function(schedule) {
+            schedule.days.forEach(function(dayIndex) {
+                // Find the date object for this day of the week
+                var dayDate = days.find(function(d) { return d.getDay() === dayIndex; });
+                if (dayDate) byDay[dayIndex].push({ course: course, schedule: schedule });
+            });
+        });
     });
     state.tasks.filter(function (t) { return weekKeys.indexOf(t.dueDate) !== -1; }).forEach(function (task) {
       var taskDate = new Date(task.dueDate + 'T00:00:00');
@@ -1659,23 +1698,25 @@
       var row = '<tr><td class="schedule-time">' + fmtTime12(slot) + '</td>';
       for (var day = 0; day < 7; day++) {
         var matches = byDay[day].filter(function (item) {
-          var itemTime = item.startTime || item.dueTime;
+          var itemTime = (item.schedule && item.schedule.startTime) || item.dueTime;
           if (!itemTime || itemTime === "00:00") return false;
           // Ensure itemTime is a string before passing to minutesOf to prevent errors
           var startTimeStr = typeof itemTime === 'string' ? itemTime : '00:00';
           var start = minutesOf(startTimeStr);
-          var end = item.endTime ? minutesOf(item.endTime) : start + 60;
+          var end = (item.schedule && item.schedule.endTime) ? minutesOf(item.schedule.endTime) : start + 60;
           return start < hour * 60 + 60 && end > hour * 60;
         });
         var cellHtml = matches.map(function (item) {
           var color, onclick, title, code, name, start, end;
-          if (item.startTime) {
+          if (item.course && item.schedule) { // It's a course
+            var course = item.course;
+            var schedule = item.schedule;
             color = COURSE_COLORS[item.color % COURSE_COLORS.length];
             // Fix: item.color is a hex string, not an index. Use it directly and validate.
-            var courseColor = (item.color && /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(item.color)) ? item.color : COURSE_COLORS[0];
-            onclick = "App.openCourseModal('" + item.id + "')";
-            var professor = escapeHtml(item.professor || '');
-            title = escapeHtml(item.name) + (professor ? ' | ' + professor : ''); code = escapeHtml(item.code); name = escapeHtml(item.name); start = fmtTime12(item.startTime); end = fmtTime12(item.endTime);
+            var courseColor = (course.color && /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(course.color)) ? course.color : COURSE_COLORS[0];
+            onclick = "App.openCourseModal('" + course.id + "')";
+            var professor = escapeHtml(course.professor || '');
+            title = escapeHtml(course.name) + (professor ? ' | ' + professor : ''); code = escapeHtml(course.code); name = escapeHtml(course.name); start = fmtTime12(schedule.startTime); end = fmtTime12(schedule.endTime);
             return '<div class="schedule-chip" style="background:' + hexToRgba(courseColor, 0.12) + '; border-left: 3px solid ' + courseColor + '; color:' + courseColor + ';" onclick="' + onclick + '" title="' + title + '"><strong>' + code + '</strong><span>' + name + '</span>' + (professor ? '<small style="opacity:0.8;font-weight:500;">' + professor + '</small>' : '') + '<small>' + start + '-' + end + '</small></div>';
           } else {
             color = getCategoryColor(item.category);
@@ -1801,7 +1842,22 @@
 
   function renderDayDetailList(dateKey) {
     var d = new Date(dateKey + "T00:00:00"), dow = d.getDay(), items = [];
-    state.courses.forEach(function (course) { if (course.days.indexOf(dow) !== -1) { items.push({ kind: "course", id: course.id, title: course.name, label: (course.code || 'N/A') + " • " + (course.professor || 'N/A'), time: fmtTime12(course.startTime) + " - " + fmtTime12(course.endTime), meta: course.modality + " • " + (course.modality === "Online" ? course.room : course.room || "Room TBD"), color: course.color || COURSE_COLORS[0], sortMinutes: minutesOf(course.startTime) }); } });
+    state.courses.forEach(function (course) {
+        (course.schedules || []).forEach(function(schedule) {
+            if (schedule.days.indexOf(dow) !== -1) {
+                items.push({
+                    kind: "course",
+                    id: course.id,
+                    title: course.name,
+                    label: (course.code || 'N/A') + " • " + (course.professor || 'N/A'),
+                    time: fmtTime12(schedule.startTime) + " - " + fmtTime12(schedule.endTime),
+                    meta: schedule.modality + " • " + (schedule.modality === "Online" ? schedule.room : schedule.room || "Room TBD"),
+                    color: course.color || COURSE_COLORS[0],
+                    sortMinutes: minutesOf(schedule.startTime)
+                });
+            }
+        });
+    });
     state.tasks.filter(function (t) { return t.dueDate === dateKey; }).forEach(function (t) {
       items.push({
         kind: "task",
@@ -1848,48 +1904,49 @@
 
   function renderCourseForm() {
     var d = ui.formDraft;
-    var dayChips = DAY_NAMES.map(function (name, i) {
-      return '<button type="button" class="chip ' + (d.days.indexOf(i) !== -1 ? "active" : "") + '" onclick="App.toggleCourseDay(' + i + ')">' + name + '</button>';
-    }).join("");
-    var colorDots = COURSE_COLORS.map(function (c) {
-      return '<button type="button" class="color-dot ' + (d.color === c ? "active" : "") + '" style="background:' + c + ';" data-color="' + c + '" onclick="App.setCourseColor(\'' + c + '\')"></button>';
-    }).join("");
-
-    var recurrenceOptions = [ { value: 'none', label: 'No Repeat' }, { value: 'daily', label: 'Daily' }, { value: 'custom', label: 'Custom' } ];
-    var recurrenceRadios = recurrenceOptions.map(function(opt) {
-      return '<label class="radio-label-pill">' +
-        '<input type="radio" name="courseRecurrence" value="' + opt.value + '" onchange="App.setCourseRecurrenceType(this.value)" ' + (d.courseRecurrenceType === opt.value ? 'checked' : '') + '>' +
-        '<span>' + opt.label + '</span>' +
-      '</label>';
-    }).join('');
 
     // Determine the current color for the custom color picker button
     var currentColorForPicker = escapeHtml(d.color);
     var contrastColorForPicker = getContrastTextColor(d.color);
-
     var colorDotsHtml = COURSE_COLORS.map(function (c) {
       return '<button type="button" class="color-dot course-modal-color-dot ' + (d.color === c ? "active" : "") + '" style="background:' + c + ';" data-color="' + c + '" onclick="App.setCourseColor(\'' + c + '\')"></button>';
     }).join("");
 
+    var schedulesHtml = (d.schedules || []).map(function(schedule, index) {
+        var dayChips = DAY_NAMES.map(function (name, i) {
+          return '<button type="button" class="chip ' + (schedule.days.indexOf(i) !== -1 ? "active" : "") + '" onclick="App.toggleScheduleDay(' + index + ', ' + i + ')">' + name + '</button>';
+        }).join("");
+
+        return '<div class="schedule-block">' +
+            (d.schedules.length > 1 ? '<button type="button" class="btn-remove-schedule" onclick="App.removeCourseSchedule(' + index + ')">' + icon("trash", 14) + ' Remove Schedule</button>' : '') +
+            '<div class="field"><span class="field-label">Days of the week</span><div class="chip-row">' + dayChips + '</div></div>' +
+            '<div class="row-2">' +
+            '<label class="field"><span class="field-label">Start time</span><input class="input" type="time" required value="' + schedule.startTime + '" oninput="App.updateScheduleDraft(' + index + ', \'startTime\', this.value)"/></label>' +
+            '<label class="field"><span class="field-label">End time</span><input class="input" type="time" required value="' + schedule.endTime + '" oninput="App.updateScheduleDraft(' + index + ', \'endTime\', this.value)"/></label>' +
+            '</div>' +
+            '<div class="row-2">' +
+            '<label class="field"><span class="field-label">Modality</span><select class="input" onchange="App.updateScheduleDraft(' + index + ', \'modality\', this.value, true)">' + MODALITIES.map(function (m) { return '<option value="' + m + '" ' + (schedule.modality === m ? "selected" : "") + '>' + m + '</option>'; }).join("") + '</select></label>' +
+            '<label class="field"><span class="field-label">' + (schedule.modality === "Online" ? "Meeting link" : "Room number") + '</span><input class="input" value="' + escapeHtml(schedule.room) + '" oninput="App.updateScheduleDraft(' + index + ', \'room\', this.value)" placeholder="' + (schedule.modality === "Online" ? "meet.school.edu/..." : "Rm 214") + '"/></label>' +
+            '</div>' +
+        '</div>';
+    }).join("");
+
     return '<form onsubmit="return App.submitCourseForm(event)" autocomplete="off">' +
-      // Added autocomplete="off" to prevent browser autofill issues
-      // with dynamically rendered forms.
       '<div class="row-2">' +
       '<label class="field"><span class="field-label">Course name</span><input class="input" required value="' + escapeHtml(d.name) + '" oninput="App.updateDraft(\'name\', this.value)" placeholder="Data Structures"/></label>' +
       '<label class="field"><span class="field-label">Course code</span><input class="input" required value="' + escapeHtml(d.code) + '" oninput="App.updateDraft(\'code\', this.value)" placeholder="CS 202"/></label>' +
       '</div>' +
       '<label class="field"><span class="field-label">Professor</span><input class="input" value="' + escapeHtml(d.professor) + '" oninput="App.updateDraft(\'professor\', this.value)" placeholder="Dr. Smith"/></label>' +
-      '<div class="row-2">' +
-      '<label class="field"><span class="field-label">Start time</span><input class="input" type="time" required value="' + d.startTime + '" oninput="App.updateDraft(\'startTime\', this.value)"/></label>' +
-      '<label class="field"><span class="field-label">End time</span><input class="input" type="time" required value="' + d.endTime + '" oninput="App.updateDraft(\'endTime\', this.value)"/></label>' +
+
+      '<div class="schedules-container">' +
+        '<p class="section-label" style="margin-top:16px; margin-bottom: 4px;">Schedules</p>' +
+        schedulesHtml +
       '</div>' +
+      '<button type="button" class="btn-add-schedule" onclick="App.addCourseSchedule()">' + icon("plus", 16) + ' Add another schedule</button>' +
+
       '<div class="row-2">' +
       '<label class="field"><span class="field-label">Start date</span><input class="input" type="date" value="' + d.startDate + '" oninput="App.updateDraft(\'startDate\', this.value)"/></label>' +
-      '<label class="field"><span class="field-label">Repeat until</span><input class="input" type="date" value="' + d.endDate + '" oninput="App.updateDraft(\'endDate\', this.value)"/></label>' +
-      '</div>' +
-      '<div class="row-2">' +
-      '<label class="field"><span class="field-label">Modality</span><select class="input" onchange="App.setCourseModality(this.value)">' + MODALITIES.map(function (m) { return '<option ' + (d.modality === m ? "selected" : "") + '>' + m + '</option>'; }).join("") + '</select></label>' +
-      '<label class="field"><span class="field-label">' + (d.modality === "Online" ? "Meeting link" : "Room number") + '</span><input class="input" value="' + escapeHtml(d.room) + '" oninput="App.updateDraft(\'room\', this.value)" placeholder="' + (d.modality === "Online" ? "meet.school.edu/..." : "Rm 214") + '"/></label>' +
+      '<label class="field"><span class="field-label">End date (optional)</span><input class="input" type="date" value="' + d.endDate + '" oninput="App.updateDraft(\'endDate\', this.value)"/></label>' +
       '</div>' +
       '<div class="field"><span class="field-label">Color</span><div class="chip-row" style="align-items:center;gap:12px;">' + colorDotsHtml +
         '<div class="custom-color-picker-wrap">' +
@@ -1899,11 +1956,7 @@
           '<input type="color" id="course-color-input" class="custom-color-picker-input" value="' + currentColorForPicker + '" oninput="App.setCourseColor(this.value)" onchange="App.setCourseColor(this.value)" />' +
         '</div>' +
       '</div></div>' +
-      // New recurrence options for courses
-      '<div class="field"><span class="field-label">Recurrence</span>' +
-      '<div class="radio-group-pills">' + recurrenceRadios + '</div>' +
-      '</div>' +
-      (d.courseRecurrenceType === 'custom' ? '<div class="field"><span class="field-label">Days of the week</span><div class="chip-row">' + dayChips + '</div></div>' : '') +
+
       '<div class="modal-actions" style="margin-top: 20px;">' +
       (ui.modal.payload ? '<button type="button" class="btn" style="margin-right: auto; background: var(--rose);" onclick="App.deleteCourseWithConfirmation(\'' + ui.modal.payload.id + '\')">' + icon("trash", 14) + ' Delete</button>' : '') +
       '<button type="button" class="btn-ghost" onclick="App.closeModal()">Cancel</button><button type="submit" class="btn">Save course</button></div>' +
@@ -2125,37 +2178,57 @@
     /* Courses */
     openCourseModal: function (id) {
       var course = id ? state.courses.find(function (c) { return c.id === id; }) : null;
-      var courseRecurrenceType = 'none';
-      if (course && course.days.length === 7) {
-        courseRecurrenceType = 'daily';
-      } else if (course && course.days.length > 0) {
-        courseRecurrenceType = 'custom';
+      var draft;
+      if (course) {
+          draft = JSON.parse(JSON.stringify(course)); // Deep copy to avoid modifying state directly
+          // Backward compatibility: if editing an old course without 'schedules' array
+          if (!draft.schedules || !Array.isArray(draft.schedules) || draft.schedules.length === 0) {
+              draft.schedules = [{
+                  days: draft.days || [],
+                  startTime: draft.startTime || "09:00",
+                  endTime: draft.endTime || "10:00",
+                  modality: draft.modality || "On-Site",
+                  room: draft.room || ""
+              }];
+          }
+      } else {
+          draft = {
+              name: "", code: "", professor: "",
+              schedules: [{ days: [], startTime: "09:00", endTime: "10:00", modality: "On-Site", room: "" }],
+              startDate: todayStr(),
+              endDate: "",
+              color: COURSE_COLORS[0]
+          };
       }
-      ui.formDraft = course ? Object.assign({}, course, { courseRecurrenceType: courseRecurrenceType }) : {
-        name: "", code: "", professor: "", days: [], startTime: "09:00", endTime: "10:00", startDate: todayStr(),
-        endDate: "", modality: "On-Site", room: "", color: COURSE_COLORS[0], courseRecurrenceType: 'none'
-      };
+      ui.formDraft = draft;
       ui.modal = { type: "course", payload: course || null };
       render();
     },
-    toggleCourseDay: function (i) {
-      var days = ui.formDraft.days.slice();
+    addCourseSchedule: function() {
+        ui.formDraft.schedules.push({ days: [], startTime: "09:00", endTime: "10:00", modality: "On-Site", room: "" });
+        renderModalContent();
+    },
+    removeCourseSchedule: function(index) {
+        if (ui.formDraft.schedules.length > 1) {
+            ui.formDraft.schedules.splice(index, 1);
+            renderModalContent();
+        } else {
+            showToast("A course must have at least one schedule.", "error");
+        }
+    },
+    updateScheduleDraft: function(index, field, value, rerender) {
+        if (ui.formDraft.schedules[index]) {
+            ui.formDraft.schedules[index][field] = value;
+        }
+        if (rerender) renderModalContent();
+      },
+    toggleScheduleDay: function (scheduleIndex, i) {
+      var days = ui.formDraft.schedules[scheduleIndex].days.slice();
       var idx = days.indexOf(i);
       if (idx === -1) days.push(i); else days.splice(idx, 1);
       days.sort();
-      ui.formDraft.days = days;
+      ui.formDraft.schedules[scheduleIndex].days = days;
       renderModalContent();
-    },
-    setCourseRecurrenceType: function (type) {
-      ui.formDraft.courseRecurrenceType = type;
-      if (type === 'daily') {
-        ui.formDraft.days = [0, 1, 2, 3, 4, 5, 6];
-      } else if (type === 'none' || type === 'custom') {
-        // When user selects 'none' or 'custom', we start with a clean slate.
-        // This prevents the 'daily' selection from carrying over to 'custom'.
-        ui.formDraft.days = [];
-      }
-      renderModalContent(); // Re-render to update day chips visibility
     },
     setCourseColor: function (color) {
       ui.formDraft.color = color;
@@ -2181,14 +2254,34 @@
         }
       });
     },
-    setCourseModality: function (val) { ui.formDraft.modality = val; renderModalContent(); },
     submitCourseForm: function (e) {
       e.preventDefault();
       var d = ui.formDraft;
-      // Apply recurrence type to days before saving
-      if (!d.name || !d.code || d.days.length === 0) { alert("Please provide a course name, code, and at least one day."); return false; }
+      if (!d.name || !d.code) {
+          showToast("Please provide a course name and code.", "error");
+          return false;
+      }
+      var hasAtLeastOneDay = d.schedules.some(function(s) { return s.days && s.days.length > 0; });
+      if (!hasAtLeastOneDay) {
+          showToast("Each course must have at least one schedule with a day selected.", "error");
+          return false;
+      }
+  
+      // Clean up old properties if they exist from backward compat conversion
+      delete d.days;
+      delete d.startTime;
+      delete d.endTime;
+      delete d.modality;
+      delete d.room;
+
       var existingIndex = state.courses.findIndex(function (c) { return c.id === (ui.modal.payload && ui.modal.payload.id); });
-      if (existingIndex !== -1) { state.courses[existingIndex] = Object.assign({}, d, { id: ui.modal.payload.id }); } else { var newCourse = Object.assign({}, d, { id: uid() }); state.courses.push(newCourse); showToast("Course '" + newCourse.name + "' added successfully!", "success"); } ui.modal = null; commit(); return false; },
+      if (existingIndex !== -1) {
+        state.courses[existingIndex] = Object.assign({}, state.courses[existingIndex], d);
+        showToast("Course '" + d.name + "' updated.", "success");
+      } else {
+        var newCourse = Object.assign({}, d, { id: uid() }); state.courses.push(newCourse); showToast("Course '" + newCourse.name + "' added successfully!", "success");
+      }
+      ui.modal = null; commit(); return false; },
     // ... existing App functions ...
 
     deleteCourseWithConfirmation: function (id) {
@@ -2324,14 +2417,6 @@
       ui.budgetSearchQuery = "";
       ui.budgetDateFilter = "";
       render();
-    },
-    toggleEditBudget: function () { ui.editingBudget = true; render(); },
-    commitBudget: function () {
-      var input = document.getElementById("budget-input");
-      var val = input ? Number(input.value) : state.settings.totalBudget;
-      state.settings.totalBudget = isNaN(val) ? 0 : val;
-      ui.editingBudget = false;
-      commit().then(function() { showToast("Budget updated.", "success"); });
     },
     removeBudgetCategory: function (name) {
       var categories = getBudgetCategories().filter(function (c) { return c !== name; });

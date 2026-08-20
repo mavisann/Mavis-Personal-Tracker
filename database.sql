@@ -5,14 +5,10 @@ CREATE TABLE IF NOT EXISTS courses (
     name TEXT,
     code TEXT,
     professor TEXT,
-    days JSONB,
-    start_time TIME,
-    end_time TIME,
     start_date DATE,
     end_date DATE,
-    modality TEXT,
-    room TEXT,
-    color TEXT
+    color TEXT,
+    schedules JSONB
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -43,7 +39,6 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS board_settings (
     id TEXT PRIMARY KEY DEFAULT 'board',
     theme TEXT,
-    "totalBudget" NUMERIC(10, 2),
     "appName" TEXT,
     "budgetCategories" JSONB,
     "paymentMethods" JSONB,

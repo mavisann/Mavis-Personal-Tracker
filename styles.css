@@ -1234,6 +1234,10 @@ input:checked + .slider:before {
 .course-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .course-card-name { font-weight: 700; margin: 0; font-size: 16px; letter-spacing: -0.3px; }
 .course-card-code { font-size: 12px; color: var(--text-faint); font-family: 'Courier New', monospace; margin: 4px 0 0; font-weight: 500; }
+.course-meta-divider {
+  border: none; height: 1px; background-color: var(--border); margin: 8px 0;
+  opacity: 0.5;
+}
 .course-meta { flex-grow: 1; /* This makes the meta section fill available space, pushing the actions down */ margin-top: 14px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-muted); }
 .course-meta div { display: flex; align-items: center; gap: 8px; }
 .course-card-actions { display: flex; gap: 8px; margin-top: 14px; }
@@ -1630,3 +1634,32 @@ input:focus-visible + .slider {
 input:checked + .slider:before {
   transform: translateX(20px);
 }
+.schedules-container { display: grid; gap: 20px; }
+.schedule-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--surface-soft);
+  position: relative;
+}
+.btn-add-schedule {
+  width: 100%;
+  justify-content: center;
+  margin: 16px 0;
+  background: transparent;
+  border: 2px dashed var(--border);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+.btn-add-schedule:hover {
+  background: var(--surface-soft);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: none;
+  box-shadow: none;
+}
+.btn-remove-schedule {
+  position: absolute; top: 12px; right: 12px;
+  background: transparent; border: none; color: var(--text-faint); font-size: 12px; display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-remove-schedule:hover { color: var(--rose); }
