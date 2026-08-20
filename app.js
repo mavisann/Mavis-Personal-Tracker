@@ -306,7 +306,9 @@
 
   async function fetchBoardData() {
     var client = getSupabaseClient();
-    if (!client) {
+    var userId = window.authAPI && window.authAPI.getUserId ? window.authAPI.getUserId() : null;
+
+    if (!client || !userId) {
       state.courses = [];
       state.tasks = [];
       state.transactions = [];
@@ -316,18 +318,18 @@
 
     try {
       var results = await Promise.all([
-        client.from("courses").select("*"),
-        client.from("tasks").select("*").order("due_date", { ascending: true }),
-        client.from("transactions").select("*").order("date", { ascending: true }),
-        client.from("board_settings").select("*").limit(1)
+        client.from("courses").select("*").eq("user_id", userId),
+        client.from("tasks").select("*").eq("user_id", userId).order("due_date", { ascending: true }),
+        client.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: true }),
+        client.from("board_settings").select("*").eq("user_id", userId).limit(1)
       ]);
 
       var courseData = results[0] && results[0].data ? results[0].data : [];
       var taskData = results[1] && results[1].data ? results[1].data : [];
       var transactionData = results[2] && results[2].data ? results[2].data : [];
       var settingsData = results[3] && results[3].data && results[3].data.length ? results[3].data[0] : null;
-      
-      state.courses = courseData.map(normalizeCourseForUi); // No longer seeding if data exists
+
+      state.courses = courseData.map(normalizeCourseForUi);
       state.tasks = taskData.map(normalizeTaskForUi);
       state.transactions = transactionData.map(normalizeTransactionForUi);
       if (settingsData) {
@@ -353,7 +355,7 @@
         });
       }
     } catch (err) {
-      console.warn("Supabase fetch failed, using demo data in memory.", err);
+      console.warn("Supabase fetch failed, using local defaults.", err);
       state.courses = [];
       state.tasks = [];
       state.transactions = [];
@@ -386,12 +388,13 @@
     };
   }
 
-  async function reconcileSupabaseTable(tableName, rows, idKey) {
+  async function reconcileSupabaseTable(tableName, rows, idKey, userId) {
     var client = getSupabaseClient();
-    if (!client || !Array.isArray(rows)) return;
+    if (!client || !Array.isArray(rows) || !userId) return;
 
     var ids = rows.filter(function (row) { return !!(row && row[idKey]); }).map(function (row) { return row[idKey]; });
-    var existing = await client.from(tableName).select(idKey);
+    // IMPORTANT: filter by user_id so we only see/delete THIS user's rows
+    var existing = await client.from(tableName).select(idKey).eq("user_id", userId);
     var existingRows = existing && Array.isArray(existing.data) ? existing.data : [];
     var staleIds = existingRows
       .map(function (row) { return row[idKey]; })
@@ -401,8 +404,9 @@
       ? client.from(tableName).upsert(rows, { onConflict: idKey })
       : Promise.resolve();
 
+    // Only delete rows belonging to this user
     var deletePromise = staleIds.length
-      ? client.from(tableName).delete().in(idKey, staleIds)
+      ? client.from(tableName).delete().in(idKey, staleIds).eq("user_id", userId)
       : Promise.resolve();
 
     await Promise.all([upsertPromise, deletePromise]);
@@ -410,37 +414,38 @@
 
   async function syncBoardData() {
     var client = getSupabaseClient();
-    if (!client) return;
+    var userId = window.authAPI && window.authAPI.getUserId ? window.authAPI.getUserId() : null;
+    if (!client || !userId) return;
 
     var courseRows = state.courses.map(function (course) {
-      // Prepare for DB: remove old top-level fields if they exist
       return {
-        id: course.id, name: course.name, code: course.code, professor: course.professor,
+        id: course.id, user_id: userId, name: course.name, code: course.code, professor: course.professor,
         start_date: toDateForDb(course.startDate),
         end_date: toDateForDb(course.endDate),
         color: course.color,
-        // The schedules array is saved directly as JSONB
         schedules: course.schedules || []
       };
     });
     var taskRows = state.tasks.map(function (task) {
       return {
-        id: task.id, category: task.category, title: task.title,
+        id: task.id, user_id: userId, category: task.category, title: task.title,
         "courseName": task.courseName, "taskType": task.taskType, "taskCode": task.taskCode,
         status: task.status, priority: task.priority, due_date: toDateForDb(task.dueDate),
-        due_time: task.dueTime, description: task.description, location: task.location // Ensure all task fields are saved
+        due_time: task.dueTime, description: task.description, location: task.location
       };
     });
     var transactionRows = state.transactions.map(function (txn) {
-      return { id: txn.id, date: toDateForDb(txn.date), category: txn.category, item: txn.item,
+      return { id: txn.id, user_id: userId, date: toDateForDb(txn.date), category: txn.category, item: txn.item,
                type: txn.type, amount: txn.amount, method: txn.method };
     });
 
+    var settingsRow = Object.assign(buildSettingsRow(), { user_id: userId });
+
     await Promise.all([
-      reconcileSupabaseTable("courses", courseRows, "id"),
-      reconcileSupabaseTable("tasks", taskRows, "id"),
-      reconcileSupabaseTable("transactions", transactionRows, "id"),
-      client.from("board_settings").upsert([buildSettingsRow()], { onConflict: "id" })
+      reconcileSupabaseTable("courses", courseRows, "id", userId),
+      reconcileSupabaseTable("tasks", taskRows, "id", userId),
+      reconcileSupabaseTable("transactions", transactionRows, "id", userId),
+      client.from("board_settings").upsert([settingsRow], { onConflict: "id,user_id" })
     ]);
   }
 
@@ -622,10 +627,14 @@
     var sidebarNav = nav.map(function (n) {
       return '<button class="nav-btn ' + (ui.tab === n.id ? "active" : "") + '" onclick="App.setTab(\'' + n.id + "')\">" + icon(n.ic, 16, "nav-icon") + '<span>' + n.label + "</span></button>";
     }).join("");
+    // Add logout button
+    sidebarNav += '<button class="nav-btn" onclick="window.authAPI.logout()">' + icon("x", 16, "nav-icon") + '<span>Logout</span></button>';
 
     var bottomNav = nav.map(function (n) {
       return '<button class="bottom-nav-btn ' + (ui.tab === n.id ? "active" : "") + '" onclick="App.setTab(\'' + n.id + "')\">" + icon(n.ic, 18) + "<span>" + n.label + "</span></button>";
     }).join("");
+    // Add logout button to bottom nav
+    bottomNav += '<button class="bottom-nav-btn" onclick="window.authAPI.logout()">' + icon("x", 18) + '<span>Logout</span></button>';
 
     var html = '<div class="layout">';
     var brandMark = icon("gradCap", 18, "brand-cap"); // Changed to use icon helper
@@ -1015,7 +1024,7 @@
           return '<span style="background:' + getCategoryColor(cat) + '"></span>'; // Background for dots is handled by CSS for .today
         }).join("") + '</span>';
       }
-      cells += '<button class="mini-cal-day ' + (isToday ? "today" : "") + '" data-tooltip="' + escapeHtml(tooltip) + '" title="' + escapeHtml(tooltip) + '" onclick="App.openDayDetail(\'' + dayKey + '\')">' + d + dotHtml + '</button>';
+      cells += '<button class="mini-cal-day ' + (isToday ? "today" : "") + '" data-tooltip="' + escapeHtml(tooltip) + '" title="' + escapeHtml(tooltip) + '" onclick="App.navigateToDayView(\'' + dayKey + '\')">' + d + dotHtml + '</button>';
     }
 
     var dow = DAY_NAMES.map(function (d) { return '<div class="mini-cal-dow">' + d + '</div>'; }).join("");
@@ -2170,6 +2179,14 @@
       if (year !== undefined && month !== undefined) {
         ui.genCalCursor = { y: year, m: month, d: 1 };
       }
+      render();
+    },
+
+    navigateToDayView: function (dateKey) {
+      var d = new Date(dateKey + "T00:00:00");
+      ui.tab = 'calendar';
+      ui.generalCalendarView = 'day';
+      ui.genCalCursor = { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
       render();
     },
 

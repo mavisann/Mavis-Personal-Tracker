@@ -1,0 +1,29 @@
+{
+  "name": "studyhub",
+  "version": "1.0.0",
+  "description": "StudyBoard is a comprehensive, plain JavaScript personal task tracker and student productivity dashboard. Built without complex build steps or heavy frameworks, it offers a fast, reliable, and secure way to manage your academic life, finances, and daily schedule. It seamlessly integrates with Supabase for data persistence while ensuring no local storage vulnerabilities or forced authentication hurdles.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mavisann/Mavis-Personal-Tracker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mavisann/Mavis-Personal-Tracker/issues"
+  },
+  "homepage": "https://github.com/mavisann/Mavis-Personal-Tracker#readme",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.0"
+  }
+}
