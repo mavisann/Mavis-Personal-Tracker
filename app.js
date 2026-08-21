@@ -1,7 +1,10 @@
 /* ===========================================================
    StudyBoard — plain JavaScript (no build step, no frameworks)
-   Public-safe Supabase integration with no local storage or auth.
-   Configure by setting window.MAVIS_SUPABASE_CONFIG before app.js.
+   Board data (courses/tasks/transactions/settings) is read from and
+   written to server.js's authenticated REST API (see API_BASE_URL
+   below), not queried directly from Supabase. Auth is handled by
+   window.authAPI (see supabaseClient.js), which stores the JWT
+   returned by server.js's /api/login in localStorage.
 =========================================================== */
 
 (function () {
@@ -296,19 +299,65 @@
     return Object.assign({}, transaction, { date: toInputDateString(transaction.date) });
   }
 
-  function getSupabaseClient() {
-    return window.MAVIS_SUPABASE || null;
+  // ---- Backend API base URL ----
+  // server.js deployed on Render; all board data now goes through this
+  // authenticated REST API instead of talking to Supabase directly from
+  // the browser. Keeping this as one constant so it's a single edit if
+  // the deployment URL ever changes.
+  var API_BASE_URL = "https://mavis-personal-tracker.onrender.com";
+
+  function getAuthToken() {
+    var session = window.authAPI && window.authAPI.getSession ? window.authAPI.getSession() : null;
+    return session && session.token ? session.token : null;
   }
 
-  function isSupabaseReady() {
-    return !!getSupabaseClient();
+  // Thin wrapper around fetch() that attaches the JWT, parses JSON, and
+  // throws on non-2xx so existing .catch() blocks around commit()/persist()
+  // keep working exactly as they did with the old Supabase client, which
+  // rejected its promise on error.
+  async function apiFetch(path, options) {
+    var token = getAuthToken();
+    options = options || {};
+    var headers = Object.assign(
+      { "Content-Type": "application/json" },
+      token ? { "Authorization": "Bearer " + token } : {},
+      options.headers || {}
+    );
+
+    var response = await fetch(API_BASE_URL + path, Object.assign({}, options, { headers: headers }));
+
+    if (response.status === 401 || response.status === 403) {
+      // Token missing/expired/invalid — force back to a logged-out state
+      // rather than silently failing on every subsequent call.
+      if (window.authAPI && window.authAPI.logout) {
+        window.authAPI.logout();
+      }
+      throw new Error("Session expired. Please log in again.");
+    }
+
+    var body = null;
+    try {
+      body = await response.json();
+    } catch (e) {
+      // No JSON body (e.g. some error pages) — fall through with body = null
+    }
+
+    if (!response.ok) {
+      var message = (body && body.error) ? body.error : ("Request failed with status " + response.status);
+      throw new Error(message);
+    }
+
+    return body;
+  }
+
+  function isApiReady() {
+    return !!getAuthToken();
   }
 
   async function fetchBoardData() {
-    var client = getSupabaseClient();
-    var userId = window.authAPI && window.authAPI.getUserId ? window.authAPI.getUserId() : null;
+    var token = getAuthToken();
 
-    if (!client || !userId) {
+    if (!token) {
       state.courses = [];
       state.tasks = [];
       state.transactions = [];
@@ -318,16 +367,18 @@
 
     try {
       var results = await Promise.all([
-        client.from("courses").select("*").eq("user_id", userId),
-        client.from("tasks").select("*").eq("user_id", userId).order("due_date", { ascending: true }),
-        client.from("transactions").select("*").eq("user_id", userId).order("date", { ascending: true }),
-        client.from("board_settings").select("*").eq("user_id", userId).limit(1)
+        apiFetch("/api/courses"),
+        apiFetch("/api/tasks"),
+        apiFetch("/api/transactions"),
+        apiFetch("/api/board_settings")
       ]);
 
-      var courseData = results[0] && results[0].data ? results[0].data : [];
-      var taskData = results[1] && results[1].data ? results[1].data : [];
-      var transactionData = results[2] && results[2].data ? results[2].data : [];
-      var settingsData = results[3] && results[3].data && results[3].data.length ? results[3].data[0] : null;
+      var courseData = Array.isArray(results[0]) ? results[0] : [];
+      var taskData = Array.isArray(results[1]) ? results[1] : [];
+      var transactionData = Array.isArray(results[2]) ? results[2] : [];
+      // /api/board_settings returns an array (SELECT ... LIMIT 1 as rows);
+      // mirrors the old Supabase .select(...).limit(1) shape.
+      var settingsData = Array.isArray(results[3]) && results[3].length ? results[3][0] : null;
 
       state.courses = courseData.map(normalizeCourseForUi);
       state.tasks = taskData.map(normalizeTaskForUi);
@@ -388,38 +439,10 @@
     };
   }
 
-  async function reconcileSupabaseTable(tableName, rows, idKey, userId) {
-    var client = getSupabaseClient();
-    if (!client || !Array.isArray(rows) || !userId) return;
-
-    var ids = rows.filter(function (row) { return !!(row && row[idKey]); }).map(function (row) { return row[idKey]; });
-    // IMPORTANT: filter by user_id so we only see/delete THIS user's rows
-    var existing = await client.from(tableName).select(idKey).eq("user_id", userId);
-    var existingRows = existing && Array.isArray(existing.data) ? existing.data : [];
-    var staleIds = existingRows
-      .map(function (row) { return row[idKey]; })
-      .filter(function (id) { return ids.indexOf(id) === -1; });
-
-    var upsertPromise = rows.length
-      ? client.from(tableName).upsert(rows, { onConflict: idKey })
-      : Promise.resolve();
-
-    // Only delete rows belonging to this user
-    var deletePromise = staleIds.length
-      ? client.from(tableName).delete().in(idKey, staleIds).eq("user_id", userId)
-      : Promise.resolve();
-
-    await Promise.all([upsertPromise, deletePromise]);
-  }
-
   async function syncBoardData() {
-    var client = getSupabaseClient();
-    var userId = window.authAPI && window.authAPI.getUserId ? window.authAPI.getUserId() : null;
-    if (!client || !userId) return;
-
     var courseRows = state.courses.map(function (course) {
       return {
-        id: course.id, user_id: userId, name: course.name, code: course.code, professor: course.professor,
+        id: course.id, name: course.name, code: course.code, professor: course.professor,
         start_date: toDateForDb(course.startDate),
         end_date: toDateForDb(course.endDate),
         color: course.color,
@@ -428,40 +451,43 @@
     });
     var taskRows = state.tasks.map(function (task) {
       return {
-        id: task.id, user_id: userId, category: task.category, title: task.title,
-        "courseName": task.courseName, "taskType": task.taskType, "taskCode": task.taskCode,
+        id: task.id, category: task.category, title: task.title,
+        courseName: task.courseName, taskType: task.taskType, taskCode: task.taskCode,
         status: task.status, priority: task.priority, due_date: toDateForDb(task.dueDate),
         due_time: task.dueTime, description: task.description, location: task.location
       };
     });
     var transactionRows = state.transactions.map(function (txn) {
-      return { id: txn.id, user_id: userId, date: toDateForDb(txn.date), category: txn.category, item: txn.item,
+      return { id: txn.id, date: toDateForDb(txn.date), category: txn.category, item: txn.item,
                type: txn.type, amount: txn.amount, method: txn.method };
     });
 
-    var settingsRow = Object.assign(buildSettingsRow(), { user_id: userId });
+    var settingsRow = buildSettingsRow();
 
+    // server.js's POST routes are upsert-only (ON CONFLICT ... DO UPDATE) and
+    // derive user_id from the JWT server-side, not from the request body, so
+    // rows here don't carry user_id at all. Row deletion is handled directly
+    // at delete time (see deleteCourse/deleteTask/deleteTransaction) rather
+    // than inferred here by diffing, so this function only ever upserts.
     await Promise.all([
-      reconcileSupabaseTable("courses", courseRows, "id", userId),
-      reconcileSupabaseTable("tasks", taskRows, "id", userId),
-      reconcileSupabaseTable("transactions", transactionRows, "id", userId),
-      client.from("board_settings").upsert([settingsRow], { onConflict: "id,user_id" })
+      apiFetch("/api/courses", { method: "POST", body: JSON.stringify(courseRows) }),
+      apiFetch("/api/tasks", { method: "POST", body: JSON.stringify(taskRows) }),
+      apiFetch("/api/transactions", { method: "POST", body: JSON.stringify(transactionRows) }),
+      apiFetch("/api/board_settings", { method: "POST", body: JSON.stringify([settingsRow]) })
     ]);
   }
 
   async function loadState() {
     await fetchBoardData();
   }
-  async function persist() { // Renamed from persist to syncBoardData for clarity
-    var client = getSupabaseClient();
-
-    if (!client) {
+  async function persist() {
+    if (!isApiReady()) {
       return;
     }
     try {
       await syncBoardData();
     } catch (err) {
-      console.error("Supabase sync failed.", err);
+      console.error("Board data sync failed.", err);
     }
   }
   function commit() {
@@ -486,14 +512,10 @@
     var short_els = document.querySelectorAll(".db-status-value-short");
     if (!els.length) return;
 
-    var label = "Supabase not configured"; // Default if not ready
-    if (!window.MAVIS_SUPABASE_CONFIG || !window.MAVIS_SUPABASE_CONFIG.url || !window.MAVIS_SUPABASE_CONFIG.anonKey) {
-        label = "Supabase config missing!"; // More specific if config object is empty
-    }
-
+    var label = "Not signed in";
     var short_label = "Offline";
 
-    if (isSupabaseReady()) {
+    if (isApiReady()) {
         label = "All changes saved";
         short_label = "Saved";
         if (ui.isSaving) {
@@ -505,9 +527,6 @@
             else if (diff < 60) { var s = Math.floor(diff); label = "Saved " + s + "s ago"; short_label = s + "s"; }
             else { var m = Math.floor(diff / 60); label = "Saved " + m + "m ago"; short_label = m + "m"; }
         }
-    } else if (window.MAVIS_SUPABASE_CONFIG && window.MAVIS_SUPABASE_CONFIG.url && window.MAVIS_SUPABASE_CONFIG.anonKey) {
-        label = "Connecting...";
-        short_label = "...";
     }
     els.forEach(function (e) { e.textContent = label; });
     short_els.forEach(function (e) { e.textContent = short_label; });
@@ -2311,6 +2330,8 @@
       var courseName = state.courses.find(function(c) { return c.id === id; })?.name || "Course";
       state.courses = state.courses.filter(function (c) { return c.id !== id; });
       App.closeModal(); // Close modal after deletion
+      apiFetch("/api/courses", { method: "DELETE", body: JSON.stringify({ ids: [id] }) })
+        .catch(function (err) { console.error("Failed to delete course on server:", err); });
       commit().then(function() {
         showToast("Course '" + courseName + "' deleted successfully.", "success");
       });
@@ -2405,6 +2426,8 @@
     deleteTransaction: function (id) {
       var transactionItem = state.transactions.find(function(t) { return t.id === id; })?.item || "Transaction";
       state.transactions = state.transactions.filter(function (t) { return t.id !== id; });
+      apiFetch("/api/transactions", { method: "DELETE", body: JSON.stringify({ ids: [id] }) })
+        .catch(function (err) { console.error("Failed to delete transaction on server:", err); });
       commit().then(function() {
         showToast("Transaction for '" + transactionItem + "' deleted.", "success");
       });
@@ -2563,6 +2586,8 @@
       var taskTitle = state.tasks.find(function(t) { return t.id === id; })?.title || "Task";
       state.tasks = state.tasks.filter(function (t) { return t.id !== id; });
       App.closeModal(); // Close modal if open
+      apiFetch("/api/tasks", { method: "DELETE", body: JSON.stringify({ ids: [id] }) })
+        .catch(function (err) { console.error("Failed to delete task on server:", err); });
       commit().then(function() {
         showToast("Task '" + taskTitle + "' deleted.", "success");
       });

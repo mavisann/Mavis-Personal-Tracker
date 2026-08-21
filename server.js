@@ -8,11 +8,27 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+// Only the actual frontend origin may call this API. Update this if the
+// site's domain ever changes (custom domain, different Netlify site, etc).
+// Note: no trailing slash — must match the browser's Origin header exactly.
+const ALLOWED_ORIGIN = 'https://mavis-studyhub.netlify.app';
+app.use(cors({ origin: ALLOWED_ORIGIN }));
 app.use(express.json());
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  // Supabase's Postgres requires SSL. rejectUnauthorized: false is needed
+  // here because Supabase uses a certificate chain that Node's default
+  // trust store doesn't recognize — this still encrypts the connection,
+  // it just skips validating the certificate against a known CA.
+  ssl: { rejectUnauthorized: false }
+});
+
+// Surface pool-level connection errors (auth failures, network issues,
+// SSL problems) in the logs with real detail, instead of only ever
+// seeing the generic 500 that route handlers fall back to.
+pool.on('error', (err) => {
+  console.error('Unexpected Postgres pool error:', err);
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
@@ -113,6 +129,18 @@ app.post('/api/courses', authenticateToken, async (req, res) => {
          name = EXCLUDED.name, code = EXCLUDED.code, professor = EXCLUDED.professor, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, color = EXCLUDED.color, schedules = EXCLUDED.schedules`,
         [row.id, row.name, row.code, row.professor, row.start_date, row.end_date, row.color, JSON.stringify(row.schedules), req.user.id]
       );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/courses', authenticateToken, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (ids && ids.length) {
+      await pool.query('DELETE FROM courses WHERE id = ANY($1) AND user_id = $2', [ids, req.user.id]);
     }
     res.json({ success: true });
   } catch (err) {

@@ -46,16 +46,6 @@
 
   <div id="app"></div>
 
-  <!-- bcryptjs for client-side password hashing -->
-  <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
-  <!-- Supabase JS SDK (used for DB queries only, not auth) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    window.MAVIS_SUPABASE_CONFIG = {
-      url: "https://dpfkybonkhgdxfzvcioc.supabase.co",
-      anonKey: "sb_publishable_eLdMrUpAQfjkWfEX1ma1Tw_KKgqhRad"
-    };
-  </script>
   <script src="supabaseClient.js"></script>
   <script>
     function switchAuthTab(tab) {

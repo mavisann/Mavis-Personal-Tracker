@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign In — Mavis</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">
+
+  <div class="w-full max-w-sm">
+    <div class="bg-white rounded-2xl shadow-2xl p-8">
+
+      <div class="text-center mb-8">
+        <h1 class="text-2xl font-bold text-slate-800">Welcome to Mavis</h1>
+        <p class="text-slate-500 text-sm mt-1">Sign in to your dashboard</p>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex mb-6 bg-slate-100 rounded-lg p-1">
+        <button id="tab-login" onclick="switchTab('login')"
+          class="flex-1 py-2 text-sm font-medium rounded-md transition-colors bg-white text-slate-800 shadow-sm">
+          Log In
+        </button>
+        <button id="tab-signup" onclick="switchTab('signup')"
+          class="flex-1 py-2 text-sm font-medium rounded-md transition-colors text-slate-500 hover:text-slate-700">
+          Sign Up
+        </button>
+      </div>
+
+      <div id="error-box" class="hidden mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm"></div>
+
+      <!-- Login form -->
+      <form id="login-form" onsubmit="handleSubmit(event, 'login')" class="space-y-4">
+        <div>
+          <label for="login-username" class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+          <input
+            id="login-username"
+            type="text"
+            autocomplete="username"
+            required
+            placeholder="Enter your username"
+            class="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-800 placeholder-slate-400
+                   transition-all duration-150
+                   hover:border-slate-400
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        <div>
+          <label for="login-password" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            autocomplete="current-password"
+            required
+            placeholder="Enter your password"
+            class="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-800 placeholder-slate-400
+                   transition-all duration-150
+                   hover:border-slate-400
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        <button
+          type="submit"
+          class="w-full py-2.5 rounded-lg bg-indigo-600 text-white font-semibold
+                 transition-colors duration-150
+                 hover:bg-indigo-700
+                 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2
+                 disabled:opacity-60 disabled:cursor-not-allowed">
+          Sign In
+        </button>
+      </form>
+
+      <!-- Signup form -->
+      <form id="signup-form" onsubmit="handleSubmit(event, 'register')" class="space-y-4 hidden">
+        <div>
+          <label for="signup-username" class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+          <input
+            id="signup-username"
+            type="text"
+            autocomplete="username"
+            required
+            placeholder="Choose a username"
+            class="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-800 placeholder-slate-400
+                   transition-all duration-150
+                   hover:border-slate-400
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        <div>
+          <label for="signup-password" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+          <input
+            id="signup-password"
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="6"
+            placeholder="Min. 6 characters"
+            class="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-800 placeholder-slate-400
+                   transition-all duration-150
+                   hover:border-slate-400
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        <button
+          type="submit"
+          class="w-full py-2.5 rounded-lg bg-indigo-600 text-white font-semibold
+                 transition-colors duration-150
+                 hover:bg-indigo-700
+                 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2
+                 disabled:opacity-60 disabled:cursor-not-allowed">
+          Create Account
+        </button>
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // Points at the real, deployed server.js API. If that
+    // deployment URL ever changes, update it here AND in
+    // supabaseClient.js / app.js, which use the same value.
+    // ============================================================
+    const API_BASE_URL = "https://mavis-personal-tracker.onrender.com";
+
+    // Where to send the user after a successful login/signup.
+    // Same-folder relative path — adjust if login.html doesn't
+    // live next to index.html on your actual deployment.
+    const REDIRECT_TARGET = "index.html";
+
+    // Same localStorage key and shape (id, username, token) that
+    // the rewritten supabaseClient.js uses, so a login here and a
+    // login through the in-app overlay are interchangeable — either
+    // one leaves app.js in the same authenticated state.
+    const SESSION_KEY = "mavis_session";
+
+    function switchTab(tab) {
+      const isLogin = tab === "login";
+      document.getElementById("tab-login").className =
+        "flex-1 py-2 text-sm font-medium rounded-md transition-colors " +
+        (isLogin ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700");
+      document.getElementById("tab-signup").className =
+        "flex-1 py-2 text-sm font-medium rounded-md transition-colors " +
+        (!isLogin ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700");
+      document.getElementById("login-form").classList.toggle("hidden", !isLogin);
+      document.getElementById("signup-form").classList.toggle("hidden", isLogin);
+      hideError();
+    }
+
+    function showError(message) {
+      const box = document.getElementById("error-box");
+      box.textContent = message;
+      box.classList.remove("hidden");
+    }
+
+    function hideError() {
+      document.getElementById("error-box").classList.add("hidden");
+    }
+
+    async function postJSON(path, body) {
+      let response;
+      try {
+        response = await fetch(API_BASE_URL + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      } catch (err) {
+        // Network failure, server unreachable/asleep, CORS block, etc.
+        throw new Error("Could not reach the server. Please check your connection and try again.");
+      }
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        // No JSON body — message below covers it
+      }
+
+      if (!response.ok) {
+        throw new Error((data && data.error) || "Something went wrong. Please try again.");
+      }
+
+      return data;
+    }
+
+    async function handleSubmit(event, action) {
+      event.preventDefault();
+      hideError();
+
+      const form = event.target;
+      const button = form.querySelector('button[type="submit"]');
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = "Please wait...";
+
+      const prefix = action === "login" ? "login" : "signup";
+      const username = document.getElementById(prefix + "-username").value.trim();
+      const password = document.getElementById(prefix + "-password").value;
+
+      try {
+        if (action === "register") {
+          // server.js's /api/register only creates the account, it
+          // doesn't return a token — so log in immediately after,
+          // same as index.html's existing auto-login-after-signup flow.
+          await postJSON("/api/register", { username: username.toLowerCase(), password });
+        }
+
+        const loginData = await postJSON("/api/login", { username: username.toLowerCase(), password });
+
+        const session = { id: loginData.user.id, username: loginData.user.username, token: loginData.token };
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+
+        window.location.href = REDIRECT_TARGET;
+      } catch (err) {
+        showError(err.message || "An error occurred. Please try again.");
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+  </script>
+</body>
+</html>

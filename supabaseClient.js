@@ -1,17 +1,24 @@
 (function () {
   "use strict";
 
-  // bcryptjs browser build exposes itself as dcodeIO.bcrypt, not window.bcrypt
-  const bcrypt = (window.dcodeIO && window.dcodeIO.bcrypt) || window.bcrypt;
+  // ============================================================
+  // Auth now goes through server.js's authenticated REST API,
+  // not directly against Supabase from the browser. Password
+  // hashing and checking both happen server-side (bcrypt, in
+  // server.js), so the browser never touches password_hash and
+  // never needs bcryptjs. This is the fix for the exposure where
+  // the old client-side flow let anyone with the public anon key
+  // read every row (including password_hash) straight out of the
+  // users table via the Supabase JS client.
+  //
+  // Keep this in sync with API_BASE_URL in app.js if the server.js
+  // deployment URL ever changes.
+  // ============================================================
+  const API_BASE_URL = "https://mavis-personal-tracker.onrender.com";
 
-  // Initialize the Supabase JS client (used only for DB queries, NOT for auth)
-  const { url, anonKey } = window.MAVIS_SUPABASE_CONFIG;
-  const supabase = window.supabase.createClient(url, anonKey);
-
-  // Expose raw client so app.js can query tables
-  window.MAVIS_SUPABASE = supabase;
-
-  // Session helpers — we store the logged-in user in localStorage ourselves
+  // Session helpers — the logged-in user + JWT are stored in
+  // localStorage under this key. app.js reads the token back out
+  // via authAPI.getSession().token to authenticate its own API calls.
   const SESSION_KEY = 'mavis_session';
 
   function getSession() {
@@ -22,12 +29,39 @@
     }
   }
 
-  function setSession(user) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  function setSession(session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   }
 
   function clearSession() {
     localStorage.removeItem(SESSION_KEY);
+  }
+
+  async function postJSON(path, body) {
+    let response;
+    try {
+      response = await fetch(API_BASE_URL + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    } catch (err) {
+      // Network failure, server unreachable, CORS block, etc.
+      throw new Error('Could not reach the server. Please check your connection and try again.');
+    }
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {
+      // Non-JSON response body — fall through, message below covers it
+    }
+
+    if (!response.ok) {
+      throw new Error((data && data.error) || 'Something went wrong. Please try again.');
+    }
+
+    return data;
   }
 
   // ============================================================
@@ -39,43 +73,27 @@
       if (!username || !password) throw new Error('Username and password are required.');
       if (password.length < 6) throw new Error('Password must be at least 6 characters.');
 
-      // Check if username already taken
-      const { data: existing } = await supabase
-        .from('users')
-        .select('id')
-        .eq('username', username.toLowerCase().trim())
-        .maybeSingle();
+      // server.js's /api/register hashes the password with bcrypt
+      // server-side and checks for an existing username itself —
+      // both of those checks used to happen here, in the browser.
+      const data = await postJSON('/api/register', {
+        username: username.toLowerCase().trim(),
+        password: password
+      });
 
-      if (existing) throw new Error('Username is already taken.');
-
-      // Hash the password using bcryptjs (loaded via CDN)
-      const hash = await bcrypt.hash(password, 10);
-
-      const { data, error } = await supabase
-        .from('users')
-        .insert({ username: username.toLowerCase().trim(), password_hash: hash })
-        .select('id, username')
-        .single();
-
-      if (error) throw new Error(error.message);
-      return data;
+      return data.user;
     },
 
     login: async (username, password) => {
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('id, username, password_hash')
-        .eq('username', username.toLowerCase().trim())
-        .maybeSingle();
+      // server.js's /api/login verifies the password against the
+      // stored bcrypt hash server-side and returns a signed JWT —
+      // the browser never sees password_hash at any point.
+      const data = await postJSON('/api/login', {
+        username: username.toLowerCase().trim(),
+        password: password
+      });
 
-      if (error || !user) throw new Error('Invalid username or password.');
-
-      // Compare entered password with stored hash
-      const match = await bcrypt.compare(password, user.password_hash);
-      if (!match) throw new Error('Invalid username or password.');
-
-      // Save session (without password_hash!)
-      const session = { id: user.id, username: user.username };
+      const session = { id: data.user.id, username: data.user.username, token: data.token };
       setSession(session);
       return session;
     },
