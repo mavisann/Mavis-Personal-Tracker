@@ -17,7 +17,7 @@
   "bugs": {
     "url": "https://github.com/mavisann/Mavis-Personal-Tracker/issues"
   },
-  "homepage": "https://github.com/mavisann/Mavis-Personal-Tracker#readme",
+  "homepage": "https://mavisann.github.io/Mavis-Personal-Tracker/",
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
