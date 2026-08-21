@@ -4,6 +4,22 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sign In — Mavis</title>
+<script>
+  // If there's already a valid session, skip the login form entirely
+  // and go straight to the dashboard. Mirrors the opposite check now
+  // in index.html, which sends logged-out visitors here.
+  (function () {
+    var session = null;
+    try {
+      session = JSON.parse(localStorage.getItem('mavis_session'));
+    } catch (e) {
+      session = null;
+    }
+    if (session && session.token) {
+      window.location.href = 'index.html';
+    }
+  })();
+</script>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">

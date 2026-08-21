@@ -5,96 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Mavis — Student Dashboard</title>
 <link rel="stylesheet" href="styles.css" />
+<script>
+  // Runs before anything else on the page (before app.js loads, before
+  // any rendering) so a logged-out visitor is sent to login.html
+  // immediately, without a flash of the dashboard or a wasted API call.
+  // Uses the same 'mavis_session' localStorage key and { token } shape
+  // that login.html writes and supabaseClient.js's authAPI reads.
+  (function () {
+    var session = null;
+    try {
+      session = JSON.parse(localStorage.getItem('mavis_session'));
+    } catch (e) {
+      session = null;
+    }
+    if (!session || !session.token) {
+      window.location.href = 'login.html';
+    }
+  })();
+</script>
 </head>
 <body>
-  <!-- Auth Overlay (shown when not logged in) -->
-  <div id="auth-overlay" class="auth-overlay">
-    <div class="auth-modal">
-      <div class="auth-tabs">
-        <button id="tab-login" class="auth-tab active" onclick="switchAuthTab('login')">Log In</button>
-        <button id="tab-signup" class="auth-tab" onclick="switchAuthTab('signup')">Sign Up</button>
-      </div>
-      <div id="auth-error" class="auth-error hidden"></div>
-
-      <!-- Login Form -->
-      <form id="login-form" class="auth-form" onsubmit="handleAuth(event, 'login')">
-        <div class="form-group">
-          <label for="login-username">Username</label>
-          <input class="input" type="text" id="login-username" placeholder="Enter your username" autocomplete="username" required />
-        </div>
-        <div class="form-group">
-          <label for="login-password">Password</label>
-          <input class="input" type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password" required />
-        </div>
-        <button type="submit" class="btn w-full">Log In</button>
-      </form>
-
-      <!-- Signup Form -->
-      <form id="signup-form" class="auth-form hidden" onsubmit="handleAuth(event, 'register')">
-        <div class="form-group">
-          <label for="signup-username">Username</label>
-          <input class="input" type="text" id="signup-username" placeholder="Choose a username" autocomplete="username" required />
-        </div>
-        <div class="form-group">
-          <label for="signup-password">Password</label>
-          <input class="input" type="password" id="signup-password" placeholder="Min. 6 characters" autocomplete="new-password" required minlength="6" />
-        </div>
-        <button type="submit" class="btn w-full">Create Account</button>
-      </form>
-    </div>
-  </div>
-
   <div id="app"></div>
 
   <script src="supabaseClient.js"></script>
-  <script>
-    function switchAuthTab(tab) {
-      document.getElementById('tab-login').classList.remove('active');
-      document.getElementById('tab-signup').classList.remove('active');
-      document.getElementById('login-form').classList.add('hidden');
-      document.getElementById('signup-form').classList.add('hidden');
-      document.getElementById('auth-error').classList.add('hidden');
-      document.getElementById('tab-' + tab).classList.add('active');
-      document.getElementById(tab + '-form').classList.remove('hidden');
-    }
-
-    async function handleAuth(event, action) {
-      event.preventDefault();
-      const btn = event.target.querySelector('button[type="submit"]');
-      const errorDiv = document.getElementById('auth-error');
-      errorDiv.classList.add('hidden');
-      const originalText = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = 'Please wait...';
-
-      const username = document.getElementById(action === 'login' ? 'login-username' : 'signup-username').value.trim();
-      const password = document.getElementById(action === 'login' ? 'login-password' : 'signup-password').value;
-
-      try {
-        if (action === 'login') {
-          await window.authAPI.login(username, password);
-        } else {
-          await window.authAPI.register(username, password);
-          // Auto-login after register
-          await window.authAPI.login(username, password);
-        }
-        document.getElementById('auth-overlay').classList.add('hidden');
-        window.location.reload();
-      } catch (err) {
-        errorDiv.textContent = err.message || 'An error occurred. Please try again.';
-        errorDiv.classList.remove('hidden');
-        btn.disabled = false;
-        btn.textContent = originalText;
-      }
-    }
-
-    // On page load: hide overlay if already logged in
-    document.addEventListener("DOMContentLoaded", () => {
-      if (window.authAPI.isLoggedIn()) {
-        document.getElementById('auth-overlay').classList.add('hidden');
-      }
-    });
-  </script>
   <script src="app.js"></script>
 </body>
 </html>
