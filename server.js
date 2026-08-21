@@ -11,8 +11,20 @@ const port = process.env.PORT || 3000;
 // Only the actual frontend origin may call this API. Update this if the
 // site's domain ever changes (custom domain, different Netlify site, etc).
 // Note: no trailing slash — must match the browser's Origin header exactly.
-const ALLOWED_ORIGIN = 'https://mavis-studyhub.netlify.app';
-app.use(cors({ origin: ALLOWED_ORIGIN }));
+const ALLOWED_ORIGINS = [
+  'https://mavisann.github.io',
+  'https://mavis-studyhub.netlify.app'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  }
+}));
 app.use(express.json());
 
 const pool = new Pool({
