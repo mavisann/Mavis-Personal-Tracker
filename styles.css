@@ -1738,3 +1738,234 @@ input:checked + .slider:before {
   justify-content: center;
   padding: 12px;
 }
+
+
+/* ===========================================================
+   Mobile overflow hardening
+   Keeps card content inside its container on narrow phones.
+   =========================================================== */
+.card,
+.metric,
+.task-card,
+.task-row,
+.kanban-col,
+.mini-month-wrap,
+.schedule-table-card,
+.timeline-head,
+.timeline-empty-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.grid > *,
+.row-2 > *,
+.toolbar > *,
+.toolbar-right > *,
+.card > *,
+.metric > *,
+.task-card > *,
+.task-row > *,
+.kanban-col > *,
+.pie-wrap > * {
+  min-width: 0;
+}
+
+.card img,
+.card svg,
+.card video,
+.card canvas,
+.metric img,
+.metric svg,
+.task-card svg {
+  max-width: 100%;
+}
+
+.card p,
+.card h1,
+.card h2,
+.card h3,
+.card h4,
+.card h5,
+.card h6,
+.card span,
+.card strong,
+.metric p,
+.metric span,
+.task-card p,
+.task-card span,
+.task-row p,
+.task-row span,
+.schedule-chip,
+.pie-legend-item {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.task-card-top,
+.task-row,
+.day-detail-header,
+.cal-header {
+  min-width: 0;
+}
+
+.task-card-top > div:first-child,
+.task-row > div:first-child,
+.day-detail-header > div:first-child {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.task-card-title,
+.task-card-sub,
+.task-row-title,
+.task-row-sub,
+.day-detail-title,
+.day-detail-label,
+.day-detail-meta {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.input,
+select.input,
+textarea.input,
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+/* The mobile bottom nav has seven actions, so don't let flex-shrinking
+   squeeze the labels/icons outside the viewport. The topbar logout below
+   also makes logout directly reachable at every narrow width. */
+.bottom-nav-btn {
+  min-width: 0;
+  flex: 1 1 0;
+  padding-left: 2px;
+  padding-right: 2px;
+  white-space: nowrap;
+}
+.bottom-nav-btn span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-logout-btn {
+  color: var(--rose);
+}
+.topbar-logout-btn:hover {
+  color: var(--rose);
+  background: var(--rose-light);
+}
+
+@media (max-width: 767px) {
+  .topbar {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  .topbar-actions {
+    flex-shrink: 0;
+  }
+
+  .main {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .card,
+  .metric,
+  .task-card,
+  .task-row,
+  .kanban-col {
+    overflow: hidden;
+  }
+
+  .task-card-top {
+    gap: 6px;
+  }
+
+  .task-card-top > div:last-child {
+    flex: 0 0 auto;
+  }
+
+  .toolbar {
+    align-items: stretch;
+  }
+
+  .toolbar-right {
+    width: 100%;
+  }
+
+  .toolbar-right > * {
+    flex: 1 1 auto;
+  }
+
+  .budget-search-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .pie-wrap {
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .pie-circle {
+    width: min(140px, 42vw);
+    height: min(140px, 42vw);
+    margin-inline: auto;
+  }
+
+  .pie-legend {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .year-month-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .cal-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 380px) {
+  .main {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .bottom-nav {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .bottom-nav-btn {
+    font-size: 9px;
+  }
+
+  .bottom-nav-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .card,
+  .metric {
+    border-radius: 12px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .task-card {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .task-card-top .icon-btn,
+  .task-card-top .icon-trash {
+    padding: 6px;
+  }
+}

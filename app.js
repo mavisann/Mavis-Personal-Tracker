@@ -128,6 +128,7 @@
     listChecks: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 5l1 1 2-2"/><path d="M4 11l1 1 2-2"/><path d="M4 17l1 1 2-2"/>',
     plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
     x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    logOut: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
     trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
     pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
@@ -647,13 +648,13 @@
       return '<button class="nav-btn ' + (ui.tab === n.id ? "active" : "") + '" onclick="App.setTab(\'' + n.id + "')\">" + icon(n.ic, 16, "nav-icon") + '<span>' + n.label + "</span></button>";
     }).join("");
     // Add logout button
-    sidebarNav += '<button class="nav-btn" onclick="window.authAPI.logout()">' + icon("x", 16, "nav-icon") + '<span>Logout</span></button>';
+    sidebarNav += '<button class="nav-btn" onclick="window.authAPI.logout()">' + icon("logOut", 16, "nav-icon") + '<span>Logout</span></button>';
 
     var bottomNav = nav.map(function (n) {
       return '<button class="bottom-nav-btn ' + (ui.tab === n.id ? "active" : "") + '" onclick="App.setTab(\'' + n.id + "')\">" + icon(n.ic, 18) + "<span>" + n.label + "</span></button>";
     }).join("");
     // Add logout button to bottom nav
-    bottomNav += '<button class="bottom-nav-btn" onclick="window.authAPI.logout()">' + icon("x", 18) + '<span>Logout</span></button>';
+    bottomNav += '<button class="bottom-nav-btn" onclick="window.authAPI.logout()">' + icon("logOut", 18) + '<span>Logout</span></button>';
 
     var html = '<div class="layout">';
     var brandMark = icon("gradCap", 18, "brand-cap"); // Changed to use icon helper
@@ -689,7 +690,8 @@
         '</div>' +
       '</div>' +
       '<div class="topbar-actions">' +
-      '<button class="icon-btn" onclick="App.toggleTheme()">' + icon(theme === "dark" ? "sun" : "moon", 18) + '</button>' +
+      '<button class="icon-btn" title="Toggle theme" aria-label="Toggle theme" onclick="App.toggleTheme()">' + icon(theme === "dark" ? "sun" : "moon", 18) + '</button>' +
+      '<button class="icon-btn topbar-logout-btn" title="Logout" aria-label="Logout" onclick="window.authAPI.logout()">' + icon("logOut", 18) + '</button>' +
       '</div></div>';
 
     html += '<main class="main">' + renderPage() + '</main>';
