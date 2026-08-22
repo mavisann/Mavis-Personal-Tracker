@@ -14,7 +14,7 @@ const port = process.env.PORT || 3000;
 const ALLOWED_ORIGINS = [
   'https://mavisann.github.io',
   'https://mavis-studyhub.netlify.app',
-  'http://127.0.0.1:5500/login.html'
+  'http://127.0.0.1:5500'
 ];
 
 app.use(cors({
