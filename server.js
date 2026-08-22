@@ -13,7 +13,8 @@ const port = process.env.PORT || 3000;
 // Note: no trailing slash — must match the browser's Origin header exactly.
 const ALLOWED_ORIGINS = [
   'https://mavisann.github.io',
-  'https://mavis-studyhub.netlify.app'
+  'https://mavis-studyhub.netlify.app',
+  'http://127.0.0.1:5500/login.html'
 ];
 
 app.use(cors({
