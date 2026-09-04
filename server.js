@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -27,6 +28,12 @@ app.use(cors({
   }
 }));
 app.use(express.json());
+
+// Serve the static frontend when the Node app is deployed directly.
+app.use(express.static(__dirname, { index: false }));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
