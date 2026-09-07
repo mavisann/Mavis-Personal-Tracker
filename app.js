@@ -630,6 +630,23 @@
     renderSaveStatus();
     applySettingsToDom(); // Apply settings to DOM after rendering shell
     renderToasts();
+    if (ui.tab === "settings" && ui.settingsTab === "account") setupGoogleLinkButton();
+  }
+
+  function setupGoogleLinkButton() {
+    if (!window.authAPI || !window.authAPI.initializeGoogleButton) return;
+    window.authAPI.initializeGoogleButton("google-link-button", function (response) {
+      window.authAPI.linkGoogle(response.credential)
+        .then(function (user) {
+          showToast("Google account linked successfully.", "success");
+          render();
+        })
+        .catch(function (error) {
+          showToast(error.message || "Could not link Google account.", "error");
+        });
+    }).catch(function (error) {
+      showToast(error.message || "Google Sign-In is unavailable.", "error");
+    });
   }
 
   function renderShell() {
@@ -858,7 +875,7 @@
     var taskTypes = Array.isArray(state.settings.taskTypes) && state.settings.taskTypes.length ? state.settings.taskTypes.slice() : DEFAULT_TASK_TYPES.slice();
     var html = '<div class="toolbar"><h2 style="margin:0;font-size:18px">Website settings</h2><div class="toolbar-right"><button class="btn" onclick="App.setTab(\'dashboard\')">Back to dashboard</button></div></div>';
 
-    var tabs = { interface: 'Interface', tasks: 'Tasks', budget: 'Budget' };
+    var tabs = { interface: 'Interface', tasks: 'Tasks', budget: 'Budget', account: 'Account' };
     html += '<div class="view-switch" style="margin-bottom: 20px;">' +
         Object.keys(tabs).map(function(tabId) {
             return '<button class="' + (ui.settingsTab === tabId ? "active" : "") + '" onclick="App.setSettingsTab(\'' + tabId + '\')">' + tabs[tabId] + '</button>';
@@ -906,6 +923,22 @@
             '<div><p class="section-label" style="margin:0 0 8px">Payment methods</p><div style="display:flex;flex-wrap:wrap;gap:8px">' + getPaymentMethods().map(function (method) { return '<span class="badge badge-slate" style="display:inline-flex;align-items:center;gap:6px">' + escapeHtml(method) + '<button class="icon-btn" title="Remove" style="padding:0;min-width:16px" onclick="App.removePaymentMethod(\'' + escapeHtml(method).replace(/'/g, "\\'") + '\')">' + icon("x", 12) + '</button></span>'; }).join("") + '</div><div style="display:flex;gap:8px;margin-top:10px"><input id="payment-method-input" class="input" placeholder="Add method" /><button class="btn btn-sm" onclick="App.addPaymentMethod()">Add</button></div></div>' +
             '</div></div>' +
         '</div>';
+    } else if (ui.settingsTab === 'account') {
+        var session = window.authAPI && window.authAPI.getSession ? window.authAPI.getSession() : null;
+        html += '<div class="grid grid-2" style="align-items:start">' +
+          '<div class="card"><h3 class="card-title">Account</h3>' +
+          '<form onsubmit="App.updateAccount(event)" style="display:grid;gap:12px">' +
+          '<label class="field"><span class="field-label">Username</span><input id="account-username" class="input" value="' + escapeHtml(session && session.username ? session.username : '') + '" minlength="3" maxlength="40" pattern="[A-Za-z0-9_]{3,40}" required></label>' +
+          '<label class="field"><span class="field-label">New password</span><input id="account-new-password" class="input" type="password" minlength="6" placeholder="' + (session && session.email ? 'Leave blank to keep current password' : 'Create a password') + '"></label>' +
+          '<label class="field"><span class="field-label">Current password <span style="font-weight:400;color:var(--text-muted)">(required when changing an existing password)</span></span><input id="account-current-password" class="input" type="password"></label>' +
+          '<button class="btn" type="submit">Save account changes</button>' +
+          '</form>' +
+          '<hr style="margin:20px 0;border:0;border-top:1px solid var(--border-color)">' +
+          '<p class="empty-note">Google account: <strong>' + escapeHtml(session && session.email ? session.email : 'Not linked') + '</strong></p>' +
+          '<p class="empty-note">Link or replace your Google account to use Google login. Set a password before unlinking Google.</p>' +
+          '<div id="google-link-button" style="margin-top:16px"></div>' +
+          '<button class="btn-ghost" type="button" onclick="App.unlinkGoogle()">Unlink Google account</button>' +
+          '</div></div>';
     }
 
     return html;
@@ -2435,6 +2468,30 @@
       });
     },
     setSettingsTab: function (v) { ui.settingsTab = v; render(); },
+    updateAccount: function (event) {
+      event.preventDefault();
+      var newPassword = document.getElementById("account-new-password").value;
+      var currentPassword = document.getElementById("account-current-password").value;
+      window.authAPI.updateAccount({
+        username: document.getElementById("account-username").value.trim(),
+        currentPassword: currentPassword || undefined,
+        newPassword: newPassword || undefined
+      }).then(function () {
+        showToast("Account updated.", "success");
+        render();
+      }).catch(function (error) {
+        showToast(error.message || "Could not update account.", "error");
+      });
+    },
+    unlinkGoogle: function () {
+      if (!window.confirm("Unlink your Google account? You must have a password set first.")) return;
+      window.authAPI.unlinkGoogle().then(function () {
+        showToast("Google account unlinked.", "success");
+        render();
+      }).catch(function (error) {
+        showToast(error.message || "Could not unlink Google account.", "error");
+      });
+    },
     setBudgetView: function (v) { ui.budgetView = v; render(); },
     setBudgetMonth: function (v) { ui.budgetMonth = Number(v); render(); },
     setBudgetYear: function (v) { ui.budgetYear = Number(v); render(); },

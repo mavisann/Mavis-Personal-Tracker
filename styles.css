@@ -237,8 +237,26 @@ body.auth-page {
 .auth-form-stage {
   position: relative;
   min-height: 314px;
-  margin-inline: -4px;
-  padding-inline: 4px;
+  overflow: hidden;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 18px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--auth-border);
 }
 
 .brand-mark {
@@ -326,7 +344,8 @@ body.auth-page {
   opacity: 1;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.28s ease, visibility 0.28s ease;
+  transform: translateX(34px);
+  transition: opacity 0.28s ease, transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.28s ease;
 }
 
 .auth-form.active {
@@ -334,14 +353,16 @@ body.auth-page {
   visibility: visible;
   pointer-events: auto;
   opacity: 0;
-  animation: authFormIn 0.3s ease forwards;
+  transform: translateX(0);
+  animation: authFormIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-form.inactive {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  animation: authFormOut 0.24s ease forwards;
+  transform: translateX(-34px);
+  animation: authFormOut 0.28s ease forwards;
 }
 
 .field-label {
@@ -474,18 +495,22 @@ body.auth-page {
 @keyframes authFormIn {
   from {
     opacity: 0;
+    transform: translateX(34px);
   }
   to {
     opacity: 1;
+    transform: translateX(0);
   }
 }
 
 @keyframes authFormOut {
   from {
     opacity: 1;
+    transform: translateX(0);
   }
   to {
     opacity: 0;
+    transform: translateX(-34px);
   }
 }
 

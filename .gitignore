@@ -1,0 +1,5 @@
+.env
+.env.example
+node_modules/
+npm-debug.log*
+migration_google_auth.sql

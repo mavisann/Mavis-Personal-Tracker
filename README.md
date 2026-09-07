@@ -81,9 +81,9 @@ Since Mavis is built with plain JavaScript, there is no frontend build step.
 
 ## 🔐 Authentication & Security
 
-The browser does not access password hashes directly. Authentication is handled by the Express backend, which verifies passwords with bcrypt and issues signed JWTs for authenticated API requests.
+The browser does not access password hashes directly. Authentication is handled by the Express backend, which verifies passwords with bcrypt or Google Identity Services and issues signed JWTs for authenticated API requests. Google ID tokens are verified server-side; only the public Google client ID is sent to the browser.
 
-For production deployment, keep secrets such as `JWT_SECRET` and `DATABASE_URL` in environment variables and never commit the `.env` file.
+For Render, copy `.env.example` into the service environment and set `PORT`, `DATABASE_URL`, `JWT_SECRET`, and `GOOGLE_CLIENT_ID` (plus `GOOGLE_CLIENT_SECRET` only if a server-side OAuth code exchange is added). Never commit `.env`. Apply `migration_google_auth.sql` to an existing database before enabling Google sign-in.
 
 ## 📁 Project Structure
 
@@ -97,6 +97,8 @@ Mavis-Personal-Tracker/
 ├── server.js
 ├── database.sql
 ├── migration.sql
+├── migration_google_auth.sql
+├── .env.example
 ├── package.json
 └── README.md
 ```

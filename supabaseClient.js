@@ -64,6 +64,36 @@
     return data;
   }
 
+  async function getJSON(path) {
+    const response = await fetch(API_BASE_URL + path);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(
+        response.status === 404
+          ? 'The authentication API is not updated on the server yet. Please redeploy the backend.'
+          : 'The authentication server returned an unexpected response.'
+      );
+    }
+    const data = await response.json();
+    if (!response.ok) throw new Error((data && data.error) || 'Could not load configuration.');
+    return data;
+  }
+
+  async function authenticatedPostJSON(path, body, method) {
+    const session = getSession();
+    const response = await fetch(API_BASE_URL + path, {
+      method: method || 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': session && session.token ? 'Bearer ' + session.token : ''
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error((data && data.error) || 'Something went wrong. Please try again.');
+    return data;
+  }
+
   // ============================================================
   // Auth API
   // ============================================================
@@ -96,6 +126,56 @@
       const session = { id: data.user.id, username: data.user.username, token: data.token };
       setSession(session);
       return session;
+    },
+
+    googleLogin: async (credential) => {
+      const data = await postJSON('/api/auth/google', { credential });
+      const session = { id: data.user.id, username: data.user.username, email: data.user.email, token: data.token };
+      setSession(session);
+      return session;
+    },
+
+    linkGoogle: async (credential) => {
+      const data = await authenticatedPostJSON('/api/auth/google/link', { credential });
+      const session = getSession();
+      if (session) setSession(Object.assign({}, session, data.user));
+      return data.user;
+    },
+
+    updateAccount: async (body) => {
+      const data = await authenticatedPostJSON('/api/account', body, 'PATCH');
+      const session = getSession();
+      if (session) setSession(Object.assign({}, session, data.user, { token: data.token }));
+      return data.user;
+    },
+
+    unlinkGoogle: async () => {
+      const data = await authenticatedPostJSON('/api/auth/google/unlink', {});
+      const session = getSession();
+      if (session) setSession(Object.assign({}, session, data.user));
+      return data.user;
+    },
+
+    initializeGoogleButton: async (elementId, callback, text) => {
+      const deadline = Date.now() + 5000;
+      while ((!window.google || !window.google.accounts || !window.google.accounts.id) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+        throw new Error('Google Sign-In is unavailable. Please reload and try again.');
+      }
+      const config = await getJSON('/api/config');
+      if (!config.googleClientId) throw new Error('Google Sign-In is not configured.');
+      window.google.accounts.id.initialize({ client_id: config.googleClientId, callback });
+      const element = document.getElementById(elementId);
+      if (element) {
+        window.google.accounts.id.renderButton(element, {
+          theme: 'outline',
+          size: 'large',
+          text: text || 'signin_with',
+          width: Math.min(360, element.parentElement ? element.parentElement.clientWidth : 360)
+        });
+      }
     },
 
     logout: () => {

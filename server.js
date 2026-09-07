@@ -4,10 +4,17 @@ const path = require('path');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET;
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+if (!process.env.DATABASE_URL || !JWT_SECRET) {
+  throw new Error('DATABASE_URL and JWT_SECRET environment variables are required.');
+}
 
 // Only the actual frontend origin may call this API. Update this if the
 // site's domain ever changes (custom domain, different Netlify site, etc).
@@ -51,7 +58,30 @@ pool.on('error', (err) => {
   console.error('Unexpected Postgres pool error:', err);
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
+async function verifyGoogleToken(token) {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    throw new Error('Google authentication is not configured.');
+  }
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken: token,
+    audience: process.env.GOOGLE_CLIENT_ID
+  });
+  return ticket.getPayload();
+}
+
+function issueToken(user) {
+  return jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email || null,
+    googleLinked: Boolean(user.google_id)
+  };
+}
 
 // Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -73,21 +103,28 @@ const authenticateToken = (req, res, next) => {
 
 // Register Endpoint
 app.post('/api/register', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, email } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
+  const normalizedEmail = email ? email.trim().toLowerCase() : null;
+  if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return res.status(400).json({ error: 'Please provide a valid email address' });
+  }
 
   try {
-    const existingUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const existingUser = await pool.query(
+      'SELECT 1 FROM users WHERE username = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2) LIMIT 1',
+      [username, normalizedEmail]
+    );
     if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'Username already taken' });
+      return res.status(400).json({ error: 'Username or email is already in use' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username',
-      [username, hashedPassword]
+      'INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3) RETURNING id, username, email, google_id',
+      [username, hashedPassword, normalizedEmail]
     );
 
     res.status(201).json({ message: 'User registered successfully', user: result.rows[0] });
@@ -111,16 +148,185 @@ app.post('/api/login', async (req, res) => {
     }
 
     const user = result.rows[0];
-    const match = await bcrypt.compare(password, user.password_hash);
+    const match = Boolean(user.password_hash) && await bcrypt.compare(password, user.password_hash);
     if (!match) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, user: { id: user.id, username: user.username } });
+    const token = issueToken(user);
+    res.json({ token, user: publicUser(user) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Public browser configuration. Never return database credentials or secrets.
+app.get('/api/config', (req, res) => {
+  res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || null });
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) {
+    return res.status(400).json({ error: 'Google credential is required' });
+  }
+
+  try {
+    const payload = await verifyGoogleToken(credential);
+    if (!payload || !payload.sub || !payload.email || payload.email_verified !== true) {
+      return res.status(401).json({ error: 'Google account could not be verified' });
+    }
+
+    const email = payload.email.toLowerCase();
+    let result = await pool.query(
+      'SELECT id, username, email, google_id FROM users WHERE google_id = $1 OR LOWER(email) = $2 LIMIT 1',
+      [payload.sub, email]
+    );
+    let user = result.rows[0];
+
+    if (!user) {
+      const baseUsername = (email.split('@')[0] || 'google-user')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '')
+        .slice(0, 40) || 'google-user';
+      let username = baseUsername;
+      let suffix = 1;
+      while ((await pool.query('SELECT 1 FROM users WHERE username = $1', [username])).rowCount) {
+        username = (baseUsername.slice(0, 35) + '-' + suffix).slice(0, 40);
+        suffix += 1;
+      }
+
+      result = await pool.query(
+        'INSERT INTO users (username, password_hash, google_id, email) VALUES ($1, NULL, $2, $3) RETURNING id, username, email, google_id',
+        [username, payload.sub, email]
+      );
+      user = result.rows[0];
+    } else {
+      if (user.google_id && user.google_id !== payload.sub) {
+        return res.status(409).json({ error: 'This email is already linked to another Google account' });
+      }
+      result = await pool.query(
+        'UPDATE users SET google_id = COALESCE(google_id, $1), email = COALESCE(email, $2) WHERE id = $3 RETURNING id, username, email, google_id',
+        [payload.sub, email, user.id]
+      );
+      user = result.rows[0];
+    }
+
+    res.json({ token: issueToken(user), user: publicUser(user) });
+  } catch (error) {
+    console.error('Google authentication failed:', error);
+    res.status(401).json({ error: 'Google authentication failed' });
+  }
+});
+
+app.get('/api/me', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, email, google_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: publicUser(result.rows[0]) });
+  } catch (error) {
+    console.error('Profile lookup failed:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/auth/google/link', authenticateToken, async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) {
+    return res.status(400).json({ error: 'Google credential is required' });
+  }
+
+  try {
+    const payload = await verifyGoogleToken(credential);
+    if (!payload || !payload.sub || !payload.email || payload.email_verified !== true) {
+      return res.status(401).json({ error: 'Google account could not be verified' });
+    }
+
+    const email = payload.email.toLowerCase();
+    const existing = await pool.query(
+      'SELECT id FROM users WHERE (google_id = $1 OR LOWER(email) = $2) AND id <> $3 LIMIT 1',
+      [payload.sub, email, req.user.id]
+    );
+    if (existing.rows.length) {
+      return res.status(409).json({ error: 'This Google account is already linked to another user' });
+    }
+
+    const result = await pool.query(
+      'UPDATE users SET google_id = $1, email = $2 WHERE id = $3 RETURNING id, username, email, google_id',
+      [payload.sub, email, req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ user: publicUser(result.rows[0]) });
+  } catch (error) {
+    console.error('Google account linking failed:', error);
+    res.status(401).json({ error: 'Google account linking failed' });
+  }
+});
+
+app.patch('/api/account', authenticateToken, async (req, res) => {
+  const { username, currentPassword, newPassword } = req.body;
+  if (username !== undefined && !/^[a-zA-Z0-9_]{3,40}$/.test(username.trim())) {
+    return res.status(400).json({ error: 'Username must be 3-40 letters, numbers, or underscores' });
+  }
+  if (newPassword !== undefined && newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  }
+
+  try {
+    const current = await pool.query(
+      'SELECT id, username, email, google_id, password_hash FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (!current.rows.length) return res.status(404).json({ error: 'User not found' });
+    const user = current.rows[0];
+
+    if (username !== undefined && username.trim().toLowerCase() !== user.username.toLowerCase()) {
+      const duplicate = await pool.query(
+        'SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) AND id <> $2',
+        [username.trim(), user.id]
+      );
+      if (duplicate.rows.length) return res.status(409).json({ error: 'Username is already in use' });
+    }
+
+    if (user.password_hash && newPassword !== undefined) {
+      if (!currentPassword || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+    }
+
+    const passwordHash = newPassword === undefined
+      ? user.password_hash
+      : await bcrypt.hash(newPassword, 10);
+    const result = await pool.query(
+      'UPDATE users SET username = COALESCE($1, username), password_hash = $2 WHERE id = $3 RETURNING id, username, email, google_id',
+      [username === undefined ? null : username.trim(), passwordHash, user.id]
+    );
+    const updatedUser = result.rows[0];
+    res.json({ token: issueToken(updatedUser), user: publicUser(updatedUser) });
+  } catch (error) {
+    console.error('Account update failed:', error);
+    res.status(500).json({ error: 'Could not update account' });
+  }
+});
+
+app.post('/api/auth/google/unlink', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'UPDATE users SET google_id = NULL, email = NULL WHERE id = $1 AND password_hash IS NOT NULL RETURNING id, username, email, google_id',
+      [req.user.id]
+    );
+    if (!result.rows.length) {
+      return res.status(400).json({ error: 'Set a password before unlinking Google from this account' });
+    }
+    res.json({ user: publicUser(result.rows[0]) });
+  } catch (error) {
+    console.error('Google account unlinking failed:', error);
+    res.status(500).json({ error: 'Could not unlink Google account' });
   }
 });
 

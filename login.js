@@ -124,10 +124,16 @@ document.addEventListener('DOMContentLoaded', function () {
     const prefix = action === 'login' ? 'login' : 'signup';
     const username = document.getElementById(prefix + '-username').value.trim();
     const password = document.getElementById(prefix + '-password').value;
+    const emailInput = document.getElementById('signup-email');
+    const email = emailInput ? emailInput.value.trim() : '';
 
     try {
       if (action === 'register') {
-        await postJSON('/api/register', { username: username.toLowerCase(), password });
+        await postJSON('/api/register', {
+          username: username.toLowerCase(),
+          password,
+          email: email || undefined
+        });
       }
 
       const loginData = await postJSON('/api/login', { username: username.toLowerCase(), password });
@@ -154,7 +160,29 @@ document.addEventListener('DOMContentLoaded', function () {
     handleSubmit(event, 'register');
   });
 
+  function handleGoogleCredential(response) {
+    hideError();
+    window.authAPI.googleLogin(response.credential)
+      .then(function () {
+        window.location.href = REDIRECT_TARGET;
+      })
+      .catch(function (error) {
+        showError(error.message || 'Google sign-in failed. Please try again.');
+      });
+  }
+
+  function setupGoogleSignIn() {
+    if (!window.authAPI || !window.authAPI.initializeGoogleButton) return;
+    Promise.all([
+      window.authAPI.initializeGoogleButton('google-login-button', handleGoogleCredential, 'signin_with'),
+      window.authAPI.initializeGoogleButton('google-signup-button', handleGoogleCredential, 'signup_with')
+    ]).catch(function (error) {
+      showError(error.message || 'Google sign-in is unavailable.');
+    });
+  }
+
   setupPasswordToggles();
+  setupGoogleSignIn();
 
   const sessionCheck = (() => {
     let session = null;

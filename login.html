@@ -40,9 +40,10 @@
         </div>
 
         <div id="error-box" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm"></div>
-
         <div class="auth-form-stage">
           <form id="login-form" class="auth-form active">
+            <div id="google-login-button" class="mb-4 flex justify-center"></div>
+            <div class="auth-divider"><span>or log in with username</span></div>
             <div>
               <label for="login-username" class="field-label">Username</label>
               <input
@@ -74,6 +75,18 @@
           </form>
 
           <form id="signup-form" class="auth-form inactive">
+            <div id="google-signup-button" class="mb-4 flex justify-center"></div>
+            <div class="auth-divider"><span>or sign up with username</span></div>
+            <div>
+              <label for="signup-email" class="field-label">Email <span style="font-weight:400;color:var(--text-muted)">(optional, enables Google login later)</span></label>
+              <input
+                id="signup-email"
+                type="email"
+                autocomplete="email"
+                placeholder="you@example.com"
+                class="auth-input"
+              />
+            </div>
             <div>
               <label for="signup-username" class="field-label">Username</label>
               <input
@@ -109,6 +122,8 @@
     </div>
   </div>
 
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script src="supabaseClient.js"></script>
   <script src="login.js" defer></script>
 </body>
 </html>

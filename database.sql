@@ -13,9 +13,14 @@ DROP TABLE IF EXISTS users CASCADE;
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
+    google_id TEXT UNIQUE,
+    email TEXT UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS users_google_id_idx ON users (google_id);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
 
 -- 2. Courses
 CREATE TABLE courses (
