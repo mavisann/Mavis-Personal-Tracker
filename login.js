@@ -5,14 +5,65 @@ document.addEventListener('DOMContentLoaded', function () {
   const signupTab = document.getElementById('tab-signup');
   const tabSwitch = document.querySelector('.tab-switch');
   const errorBox = document.getElementById('error-box');
+  const termsModal = document.getElementById('terms-modal');
+  const termsAgreement = document.getElementById('terms-agreement');
+  const termsContinue = document.getElementById('terms-continue');
+  const termsError = document.getElementById('terms-error');
 
   const API_BASE_URL = 'https://mavis-personal-tracker.onrender.com';
   const REDIRECT_TARGET = 'index.html';
   const SESSION_KEY = 'mavis_session';
+  const TERMS_ACCEPTED_KEY = 'mavis_terms_accepted_at';
+
+  fetch(API_BASE_URL + '/api/health', { method: 'GET', mode: 'cors', keepalive: true }).catch(function () {});
+
+  function hasAcceptedTerms() {
+    return Boolean(localStorage.getItem(TERMS_ACCEPTED_KEY));
+  }
+
+  function requireTermsAgreement() {
+    if (hasAcceptedTerms()) return true;
+    termsModal.classList.add('is-open');
+    termsAgreement.focus();
+    termsError.textContent = 'Please agree to the Terms & Conditions to continue.';
+    return false;
+  }
+
+  termsAgreement.checked = hasAcceptedTerms();
+  termsContinue.disabled = !termsAgreement.checked;
+  termsAgreement.addEventListener('change', function () {
+    termsContinue.disabled = !termsAgreement.checked;
+    termsError.textContent = '';
+  });
+  termsContinue.addEventListener('click', function () {
+    if (!termsAgreement.checked) {
+      termsError.textContent = 'Please check the agreement box first.';
+      return;
+    }
+    localStorage.setItem(TERMS_ACCEPTED_KEY, new Date().toISOString());
+    termsModal.classList.remove('is-open');
+  });
 
   function showError(message) {
     errorBox.textContent = message;
     errorBox.classList.remove('hidden');
+  }
+
+  function setFieldError(input, message) {
+    const error = document.getElementById(input.id + '-error');
+    input.setCustomValidity(message || '');
+    input.classList.toggle('has-error', Boolean(message));
+    if (error) error.textContent = message || '';
+  }
+
+  function validateForm(form) {
+    let valid = true;
+    form.querySelectorAll('input').forEach(function (input) {
+      const message = input.validity.valid ? '' : (input.validity.valueMissing ? 'This field is required.' : input.validationMessage);
+      setFieldError(input, message);
+      if (message) valid = false;
+    });
+    return valid;
   }
 
   function hideError() {
@@ -115,11 +166,17 @@ document.addEventListener('DOMContentLoaded', function () {
     event.preventDefault();
     hideError();
 
+    if (!requireTermsAgreement()) return;
     const form = event.target;
+    if (!validateForm(form)) {
+      form.reportValidity();
+      return;
+    }
     const button = form.querySelector('button[type="submit"]');
     const originalText = button.textContent;
     button.disabled = true;
     button.textContent = 'Please wait...';
+    form.setAttribute('aria-busy', 'true');
 
     const prefix = action === 'login' ? 'login' : 'signup';
     const username = document.getElementById(prefix + '-username').value.trim();
@@ -144,11 +201,17 @@ document.addEventListener('DOMContentLoaded', function () {
       };
 
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      window.location.href = REDIRECT_TARGET;
+      button.textContent = action === 'register' ? 'Account created — welcome!' : "You're signed in!";
+      button.classList.add('success-state');
+      form.removeAttribute('aria-busy');
+      window.setTimeout(function () {
+        window.location.href = REDIRECT_TARGET;
+      }, 450);
     } catch (error) {
       showError(error.message || 'An error occurred. Please try again.');
       button.disabled = false;
       button.textContent = originalText;
+      form.removeAttribute('aria-busy');
     }
   }
 
@@ -161,10 +224,14 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   function handleGoogleCredential(response) {
+    if (!requireTermsAgreement()) return;
     hideError();
     window.authAPI.googleLogin(response.credential)
       .then(function () {
-        window.location.href = REDIRECT_TARGET;
+      showError('Signed in successfully. Loading your dashboard…');
+      errorBox.classList.remove('bg-red-50', 'border-red-200', 'text-red-700');
+      errorBox.classList.add('success-message');
+      window.location.href = REDIRECT_TARGET;
       })
       .catch(function (error) {
         showError(error.message || 'Google sign-in failed. Please try again.');
@@ -183,6 +250,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
   setupPasswordToggles();
   setupGoogleSignIn();
+  [loginForm, signupForm].forEach(function (form) {
+    form.querySelectorAll('input').forEach(function (input) {
+      input.addEventListener('input', function () {
+        if (input.validity.valid) setFieldError(input, '');
+      });
+    });
+  });
+
+  if (!localStorage.getItem('mavis_consent')) {
+    const banner = document.createElement('div');
+    banner.className = 'consent-banner';
+    banner.innerHTML = '<p>We use localStorage for your session and preferences. <a href="privacy.html">Read our privacy policy</a>.</p><button class="btn btn-primary" type="button">Got it</button>';
+    banner.querySelector('button').addEventListener('click', function () {
+      localStorage.setItem('mavis_consent', 'accepted');
+      banner.remove();
+    });
+    document.body.appendChild(banner);
+  }
 
   const sessionCheck = (() => {
     let session = null;

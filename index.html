@@ -3,8 +3,27 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Mavis — Student Dashboard</title>
+<title>Mavis | All-in-One Student Dashboard &amp; Study Hub</title>
+<meta name="description" content="Mavis is an all-in-one student dashboard for courses, tasks, schedules, budgets, and study progress in one focused workspace." />
+<link rel="canonical" href="https://mavisann.github.io/Mavis-Personal-Tracker/index.html" />
+<meta property="og:title" content="Mavis | All-in-One Student Dashboard &amp; Study Hub" />
+<meta property="og:description" content="Organize courses, tasks, schedules, budgets, and study progress in one calm, focused workspace." />
+<meta property="og:image" content="https://mavisann.github.io/Mavis-Personal-Tracker/assets/og-image.png" />
+<meta property="og:url" content="https://mavisann.github.io/Mavis-Personal-Tracker/index.html" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Mavis | Student Dashboard &amp; Study Hub" />
+<meta name="twitter:description" content="A focused workspace for managing your academic life." />
+<meta name="twitter:image" content="https://mavisann.github.io/Mavis-Personal-Tracker/assets/og-image.png" />
+<link rel="icon" href="favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="manifest" href="site.webmanifest" />
 <link rel="stylesheet" href="styles.css" />
+<script>
+  window.MAVIS_ANALYTICS = { provider: "plausible", domain: "mavisann.github.io", enabled: false };
+</script>
 <script>
   // Runs before anything else on the page (before app.js loads, before
   // any rendering) so a logged-out visitor is sent to login.html
@@ -25,7 +44,18 @@
 </script>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <main class="app-loading" aria-live="polite">
+      <div class="loading-mark" aria-hidden="true">M</div>
+      <div class="skeleton skeleton-heading"></div>
+      <div class="skeleton-grid" aria-hidden="true">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+      <p>Loading your study workspace…</p>
+    </main>
+  </div>
 
   <script src="supabaseClient.js"></script>
   <script src="https://accounts.google.com/gsi/client" async></script>

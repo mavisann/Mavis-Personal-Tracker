@@ -151,7 +151,7 @@
   };
   function icon(name, size, cls) {
     size = size || 16;
-    return '<svg class="' + (cls || "") + '" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || "") + '</svg>';
+    return '<svg class="' + (cls || "") + '" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || "") + '</svg>';
   }
 
   /* ---------------- State ---------------- */
@@ -355,6 +355,11 @@
     return !!getAuthToken();
   }
 
+  function hideInitialLoader() {
+    var loader = document.querySelector(".app-loading");
+    if (loader) loader.remove();
+  }
+
   async function fetchBoardData() {
     var token = getAuthToken();
 
@@ -367,19 +372,11 @@
     }
 
     try {
-      var results = await Promise.all([
-        apiFetch("/api/courses"),
-        apiFetch("/api/tasks"),
-        apiFetch("/api/transactions"),
-        apiFetch("/api/board_settings")
-      ]);
-
-      var courseData = Array.isArray(results[0]) ? results[0] : [];
-      var taskData = Array.isArray(results[1]) ? results[1] : [];
-      var transactionData = Array.isArray(results[2]) ? results[2] : [];
-      // /api/board_settings returns an array (SELECT ... LIMIT 1 as rows);
-      // mirrors the old Supabase .select(...).limit(1) shape.
-      var settingsData = Array.isArray(results[3]) && results[3].length ? results[3][0] : null;
+      var bootstrap = await apiFetch("/api/bootstrap");
+      var courseData = Array.isArray(bootstrap.courses) ? bootstrap.courses : [];
+      var taskData = Array.isArray(bootstrap.tasks) ? bootstrap.tasks : [];
+      var transactionData = Array.isArray(bootstrap.transactions) ? bootstrap.transactions : [];
+      var settingsData = Array.isArray(bootstrap.boardSettings) && bootstrap.boardSettings.length ? bootstrap.boardSettings[0] : null;
 
       state.courses = courseData.map(normalizeCourseForUi);
       state.tasks = taskData.map(normalizeTaskForUi);
@@ -406,8 +403,9 @@
           genCalShow: settingsData["genCalShow"] || { Class: true, Event: true, Personal: true }
         });
       }
+
     } catch (err) {
-      console.warn("Supabase fetch failed, using local defaults.", err);
+      console.warn("Bootstrap fetch failed, using local defaults.", err);
       state.courses = [];
       state.tasks = [];
       state.transactions = [];
@@ -489,6 +487,7 @@
       await syncBoardData();
     } catch (err) {
       console.error("Board data sync failed.", err);
+      throw err;
     }
   }
   function commit() {
@@ -712,6 +711,7 @@
       '</div></div>';
 
     html += '<main class="main">' + renderPage() + '</main>';
+    html += '<footer class="app-footer"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="mailto:prince.semillanoquilantang@gmail.com">Support</a><a href="https://github.com/mavisann/Mavis-Personal-Tracker">GitHub</a></footer>';
 
     html += '<nav class="bottom-nav">' + bottomNav + '</nav>'; // Moved inside layout
 
@@ -2652,26 +2652,41 @@
       });
     },
     setTaskStatus: function (id, status, noToast) {
+      var previous = state.tasks.find(function (t) { return t.id === id; });
       state.tasks = state.tasks.map(function (t) { return t.id === id ? Object.assign({}, t, { status: status }) : t; });
       commit().then(function() {
         if (!noToast) {
           showToast("Task status updated.", "success");
         }
+      }).catch(function() {
+        state.tasks = state.tasks.map(function (t) { return t.id === id && previous ? previous : t; });
+        render();
+        showToast("Could not update task status. Your change was reverted.", "error");
       });
     },
     toggleTaskDone: function (id) {
+      var previous = state.tasks.find(function (t) { return t.id === id; });
       state.tasks = state.tasks.map(function (t) {
         if (t.id !== id) return t;
         return Object.assign({}, t, { status: t.status === "Completed" ? "To Do" : "Completed" });
       });
       commit().then(function() {
         showToast("Task status updated.", "success");
+      }).catch(function() {
+        state.tasks = state.tasks.map(function (t) { return t.id === id && previous ? previous : t; });
+        render();
+        showToast("Could not update task status. Your change was reverted.", "error");
       });
     },
     updateTaskField: function (id, field, value) {
+      var previous = state.tasks.find(function (t) { return t.id === id; });
       state.tasks = state.tasks.map(function (t) { return t.id === id ? Object.assign({}, t, (function () { var o = {}; o[field] = value; return o; })()) : t; });
       commit().then(function() {
         showToast("Task updated.", "success");
+      }).catch(function() {
+        state.tasks = state.tasks.map(function (t) { return t.id === id && previous ? previous : t; });
+        render();
+        showToast("Could not save task changes. Your change was reverted.", "error");
       });
     },
     setTaskView: function (v) { ui.taskView = v; render(); },
@@ -2715,14 +2730,6 @@
       }
     },
 
-    openSidebar: function () {
-      // This function is no longer used directly by onmouseenter/onmouseleave
-      // The logic is now handled by openSidebarOnHover/closeSidebarOnHover
-      // and the persistent state.settings.showSidebar
-    },
-    closeSidebar: function () {
-      // See openSidebar
-    },
     toggleSidebar: function () { // This button will toggle the persistent showSidebar setting
       if (window.innerWidth <= 768) return; // Mobile always closed by default
       state.settings.showSidebar = !state.settings.showSidebar;
@@ -2808,6 +2815,7 @@
     document.body.classList.add('anim-initial-load');
     // Load data and then render the application
     loadState().then(function () {
+      hideInitialLoader();
       ui.lastSaveTime = new Date(); // Initialize lastSaveTime after data loads
       App.setTab(state.settings.defaultLandingTab || DEFAULT_LANDING_TAB); // Set initial tab based on settings
       setInterval(renderSaveStatus, 1000);
@@ -2817,5 +2825,15 @@
         document.body.classList.remove('anim-initial-load');
       }, 1000);
     });
+    if (!localStorage.getItem("mavis_consent")) {
+      var banner = document.createElement("div");
+      banner.className = "consent-banner";
+      banner.innerHTML = '<p>We use localStorage for your session and preferences. <a href="privacy.html">Read our privacy policy</a>.</p><button class="btn btn-primary" type="button">Got it</button>';
+      banner.querySelector("button").addEventListener("click", function () {
+        localStorage.setItem("mavis_consent", "accepted");
+        banner.remove();
+      });
+      document.body.appendChild(banner);
+    }
   };
 })();

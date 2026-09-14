@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
@@ -35,6 +36,7 @@ app.use(cors({
   }
 }));
 app.use(express.json());
+app.use(compression());
 
 // Serve the static frontend when the Node app is deployed directly.
 app.use(express.static(__dirname, { index: false }));
@@ -44,6 +46,9 @@ app.get('/', (req, res) => {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
   // Supabase's Postgres requires SSL. rejectUnauthorized: false is needed
   // here because Supabase uses a certificate chain that Node's default
   // trust store doesn't recognize — this still encrypts the connection,
@@ -96,6 +101,10 @@ const authenticateToken = (req, res, next) => {
     next();
   });
 };
+
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 // ----------------------------------------------------
 // AUTH ROUTES
@@ -347,15 +356,14 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
     const rows = req.body;
-    for (const row of rows) {
-      await pool.query(
+    await Promise.all(rows.map((row) => pool.query(
         `INSERT INTO courses (id, name, code, professor, start_date, end_date, color, schedules, user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (id) DO UPDATE SET
-         name = EXCLUDED.name, code = EXCLUDED.code, professor = EXCLUDED.professor, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, color = EXCLUDED.color, schedules = EXCLUDED.schedules`,
+         name = EXCLUDED.name, code = EXCLUDED.code, professor = EXCLUDED.professor, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, color = EXCLUDED.color, schedules = EXCLUDED.schedules
+         WHERE courses.user_id = EXCLUDED.user_id`,
         [row.id, row.name, row.code, row.professor, row.start_date, row.end_date, row.color, JSON.stringify(row.schedules), req.user.id]
-      );
-    }
+      )));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -387,15 +395,14 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
 app.post('/api/tasks', authenticateToken, async (req, res) => {
   try {
     const rows = req.body;
-    for (const row of rows) {
-      await pool.query(
+    await Promise.all(rows.map((row) => pool.query(
         `INSERT INTO tasks (id, category, title, "courseName", "taskType", "taskCode", status, priority, due_date, due_time, description, location, user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (id) DO UPDATE SET
-         category = EXCLUDED.category, title = EXCLUDED.title, "courseName" = EXCLUDED."courseName", "taskType" = EXCLUDED."taskType", "taskCode" = EXCLUDED."taskCode", status = EXCLUDED.status, priority = EXCLUDED.priority, due_date = EXCLUDED.due_date, due_time = EXCLUDED.due_time, description = EXCLUDED.description, location = EXCLUDED.location`,
+         category = EXCLUDED.category, title = EXCLUDED.title, "courseName" = EXCLUDED."courseName", "taskType" = EXCLUDED."taskType", "taskCode" = EXCLUDED."taskCode", status = EXCLUDED.status, priority = EXCLUDED.priority, due_date = EXCLUDED.due_date, due_time = EXCLUDED.due_time, description = EXCLUDED.description, location = EXCLUDED.location
+         WHERE tasks.user_id = EXCLUDED.user_id`,
         [row.id, row.category, row.title, row.courseName, row.taskType, row.taskCode, row.status, row.priority, row.due_date, row.due_time, row.description, row.location, req.user.id]
-      );
-    }
+      )));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -427,15 +434,14 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
 app.post('/api/transactions', authenticateToken, async (req, res) => {
   try {
     const rows = req.body;
-    for (const row of rows) {
-      await pool.query(
+    await Promise.all(rows.map((row) => pool.query(
         `INSERT INTO transactions (id, date, category, item, type, amount, method, user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (id) DO UPDATE SET
-         date = EXCLUDED.date, category = EXCLUDED.category, item = EXCLUDED.item, type = EXCLUDED.type, amount = EXCLUDED.amount, method = EXCLUDED.method`,
+         date = EXCLUDED.date, category = EXCLUDED.category, item = EXCLUDED.item, type = EXCLUDED.type, amount = EXCLUDED.amount, method = EXCLUDED.method
+         WHERE transactions.user_id = EXCLUDED.user_id`,
         [row.id, row.date, row.category, row.item, row.type, row.amount, row.method, req.user.id]
-      );
-    }
+      )));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -461,6 +467,27 @@ app.get('/api/board_settings', authenticateToken, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/bootstrap', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [courses, tasks, transactions, boardSettings] = await Promise.all([
+      pool.query('SELECT * FROM courses WHERE user_id = $1', [userId]),
+      pool.query('SELECT * FROM tasks WHERE user_id = $1 ORDER BY due_date ASC', [userId]),
+      pool.query('SELECT * FROM transactions WHERE user_id = $1 ORDER BY date ASC', [userId]),
+      pool.query('SELECT * FROM board_settings WHERE user_id = $1 LIMIT 1', [userId])
+    ]);
+    res.json({
+      courses: courses.rows,
+      tasks: tasks.rows,
+      transactions: transactions.rows,
+      boardSettings: boardSettings.rows
+    });
+  } catch (err) {
+    console.error('Bootstrap data load failed:', err);
+    res.status(500).json({ error: 'Could not load board data' });
   }
 });
 

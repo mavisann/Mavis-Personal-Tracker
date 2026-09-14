@@ -106,4 +106,9 @@ CREATE POLICY "anon full access" ON tasks FOR ALL TO anon USING (true) WITH CHEC
 CREATE POLICY "anon full access" ON transactions FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "anon full access" ON board_settings FOR ALL TO anon USING (true) WITH CHECK (true);
 
+CREATE INDEX IF NOT EXISTS idx_courses_user_id ON courses(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id_due ON tasks(user_id, due_date ASC);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id_date ON transactions(user_id, date ASC);
+CREATE INDEX IF NOT EXISTS idx_board_settings_user_id ON board_settings(user_id);
+
 COMMIT;

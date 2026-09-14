@@ -1,0 +1,9 @@
+{
+  "name": "Mavis Study Hub",
+  "short_name": "Mavis",
+  "start_url": "login.html",
+  "display": "standalone",
+  "background_color": "#06111f",
+  "theme_color": "#7c3aed",
+  "description": "An all-in-one student dashboard and study hub."
+}

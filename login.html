@@ -3,7 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sign In — Mavis</title>
+<title>Sign in to Mavis | Student Dashboard &amp; Study Hub</title>
+<meta name="description" content="Sign in to Mavis, the focused student dashboard for organizing courses, tasks, schedules, budgets, and study progress." />
+<link rel="canonical" href="https://mavisann.github.io/Mavis-Personal-Tracker/login.html" />
+<meta property="og:title" content="Sign in to Mavis | Student Dashboard &amp; Study Hub" />
+<meta property="og:description" content="Access your focused workspace for courses, tasks, schedules, budgets, and study progress." />
+<meta property="og:image" content="https://mavisann.github.io/Mavis-Personal-Tracker/assets/og-image.png" />
+<meta property="og:url" content="https://mavisann.github.io/Mavis-Personal-Tracker/login.html" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Sign in to Mavis" />
+<meta name="twitter:description" content="Your calm, focused student workspace." />
+<meta name="twitter:image" content="https://mavisann.github.io/Mavis-Personal-Tracker/assets/og-image.png" />
+<link rel="icon" href="favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="manifest" href="site.webmanifest" />
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="styles.css" />
 </head>
@@ -39,7 +55,7 @@
           </button>
         </div>
 
-        <div id="error-box" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm"></div>
+        <div id="error-box" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm" role="alert" aria-live="assertive"></div>
         <div class="auth-form-stage">
           <form id="login-form" class="auth-form active">
             <div id="google-login-button" class="mb-4 flex justify-center"></div>
@@ -53,7 +69,9 @@
                 required
                 placeholder="Enter your username"
                 class="auth-input"
+                aria-describedby="login-username-error"
               />
+              <small id="login-username-error" class="field-error" role="alert"></small>
             </div>
             <div>
               <label for="login-password" class="field-label">Password</label>
@@ -65,7 +83,9 @@
                   required
                   placeholder="Enter your password"
                   class="auth-input password-input"
+                  aria-describedby="login-password-error"
                 />
+                <small id="login-password-error" class="field-error" role="alert"></small>
                 <button type="button" class="toggle-password" data-target="login-password" aria-label="Show password">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
@@ -85,7 +105,9 @@
                 autocomplete="email"
                 placeholder="you@example.com"
                 class="auth-input"
+                aria-describedby="signup-email-error"
               />
+              <small id="signup-email-error" class="field-error" role="alert"></small>
             </div>
             <div>
               <label for="signup-username" class="field-label">Username</label>
@@ -96,7 +118,9 @@
                 required
                 placeholder="Choose a username"
                 class="auth-input"
+                aria-describedby="signup-username-error"
               />
+              <small id="signup-username-error" class="field-error" role="alert"></small>
             </div>
             <div>
               <label for="signup-password" class="field-label">Password</label>
@@ -109,7 +133,9 @@
                   minlength="6"
                   placeholder="Min. 6 characters"
                   class="auth-input password-input"
+                  aria-describedby="signup-password-error"
                 />
+                <small id="signup-password-error" class="field-error" role="alert"></small>
                 <button type="button" class="toggle-password" data-target="signup-password" aria-label="Show password">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
@@ -121,9 +147,42 @@
       </div>
     </div>
   </div>
+  <div id="terms-modal" class="terms-modal-overlay is-open" role="dialog" aria-modal="true" aria-labelledby="terms-modal-title">
+    <section class="terms-modal">
+      <div class="terms-modal-header">
+        <div>
+          <p class="eyebrow">Before you continue</p>
+          <h2 id="terms-modal-title">Terms &amp; Conditions</h2>
+        </div>
+        <span class="terms-modal-badge" aria-hidden="true">M</span>
+      </div>
+      <div class="terms-modal-body">
+        <p>Please review the Terms &amp; Conditions and Privacy Policy for using Mavis, your student productivity workspace.</p>
+        <div class="terms-modal-copy">
+          <h3>Terms &amp; Conditions</h3>
+          <p><strong>Use responsibly.</strong> Mavis is a planning aid, not a school, financial adviser, or emergency service.</p>
+          <p>You are responsible for your account, credentials, and the information you enter. Do not misuse the service or upload unlawful or malicious content.</p>
+          <h3>Privacy Policy</h3>
+          <p>We use your account and workspace information to provide Mavis. Your session, theme, and consent preference may be stored in localStorage. We do not sell private study data for advertising.</p>
+          <p>Read the full <a href="terms.html" target="_blank" rel="noopener">Terms &amp; Conditions</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</p>
+        </div>
+        <label class="terms-agreement">
+          <input id="terms-agreement" type="checkbox">
+          <span>I have read and agree to the <a href="terms.html" target="_blank" rel="noopener">Terms &amp; Conditions</a> and acknowledge the <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+        </label>
+        <button id="terms-continue" class="auth-submit terms-continue" type="button" disabled>Agree &amp; continue</button>
+        <p id="terms-error" class="terms-error" role="alert"></p>
+      </div>
+    </section>
+  </div>
+  <footer class="auth-footer"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="mailto:prince.semillanoquilantang@gmail.com">Support</a><a href="https://github.com/mavisann/Mavis-Personal-Tracker">GitHub</a></footer>
 
   <script src="https://accounts.google.com/gsi/client" async></script>
   <script src="supabaseClient.js"></script>
   <script src="login.js" defer></script>
+  <script>
+    window.MAVIS_ANALYTICS = { provider: "plausible", domain: "mavisann.github.io", enabled: false };
+    fetch("https://mavis-personal-tracker.onrender.com/api/health", { method: "GET", mode: "cors", keepalive: true }).catch(function () {});
+  </script>
 </body>
 </html>

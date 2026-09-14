@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Allow: /login.html
+Disallow: /api/
+Disallow: /server.js
+Disallow: /supabaseClient.js
+Sitemap: https://mavisann.github.io/Mavis-Personal-Tracker/sitemap.xml
