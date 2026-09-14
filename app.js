@@ -1465,7 +1465,7 @@
     var html = '<div class="task-card" draggable="true" ondragstart="App.handleDragStart(event, \'' + task.id + '\')" ondragend="App.handleDragEnd(event)"><div class="task-card-top"><div style="min-width:0">' +
       '<p class="task-card-title">' + escapeHtml(task.title) + '</p>' +
       '<p class="task-card-sub">' + sub + '</p></div>' +
-      '<div style="display:flex;gap:8px;align-items:center"><button class="icon-btn" title="Edit task" onclick="App.openTaskModal(\'' + task.id + '\');event.stopPropagation();">' + icon("pencil", 13) + '</button><button class="icon-trash" onclick="App.deleteTaskWithConfirmation(\'' + task.id + '\');event.stopPropagation();">' + icon("trash", 13) + '</button></div></div>' +
+      '<div class="task-card-actions"><button class="icon-btn" title="Edit task" onclick="App.openTaskModal(\'' + task.id + '\');event.stopPropagation();">' + icon("pencil", 13) + '</button><button class="icon-trash" onclick="App.deleteTaskWithConfirmation(\'' + task.id + '\');event.stopPropagation();">' + icon("trash", 13) + '</button></div></div>' +
       '<div class="task-card-badges">' +
       '<span class="badge ' + PRIORITY_BADGE[task.priority] + '">' + task.priority + '</span>' +
       '<span class="badge badge-slate">' + (daysLeft < 0 ? "Overdue" : daysLeft === 0 ? "Due today" : daysLeft + "d left") + '</span>' +
