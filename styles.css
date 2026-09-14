@@ -88,7 +88,7 @@ body.auth-page {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 24px 14px;
+  padding: 16px 24px 10px;
   font-family: Inter, "Segoe UI", sans-serif;
   background:
     radial-gradient(circle at top left, rgba(59, 130, 246, 0.2), transparent 30%),
@@ -102,8 +102,8 @@ body.auth-page {
 .auth-shell {
   position: relative;
   width: min(1100px, 100%);
-  flex: 1 1 auto;
-  height: auto;
+  flex: 1 1 0;
+  height: 0;
   min-height: 0;
   display: flex;
   align-items: center;
@@ -141,8 +141,8 @@ body.auth-page {
   position: relative;
   z-index: 1;
   width: min(920px, 100%);
+  height: min(600px, calc(100dvh - 64px));
   min-height: 0;
-  max-height: calc(100dvh - 72px);
   border: 1px solid var(--auth-border);
   border-radius: 30px;
   background: rgba(15, 23, 42, 0.55);
@@ -161,6 +161,7 @@ body.auth-page {
   flex-direction: column;
   justify-content: center;
   gap: 28px;
+  min-height: 0;
 }
 
 .visual-badge {
@@ -238,9 +239,10 @@ body.auth-page {
   color: #0f172a;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   animation: fadeInRight 0.85s ease both;
 }
@@ -248,7 +250,8 @@ body.auth-page {
 .auth-form-stage {
   position: relative;
   min-height: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
+  overflow: visible;
 }
 
 .auth-divider {
@@ -596,11 +599,12 @@ body.auth-page {
   }
 
   .auth-shell {
-    min-height: auto;
-    flex-grow: 0;
+    flex: 1 1 0;
+    min-height: 0;
   }
 
   .auth-card-wrap {
+    height: min(680px, calc(100dvh - 56px));
     border-radius: 22px;
   }
 
@@ -610,6 +614,72 @@ body.auth-page {
 
   .tab-btn {
     padding: 10px 12px;
+  }
+}
+
+@media (min-width: 861px) {
+  .auth-panel {
+    overflow-y: hidden;
+    padding: 16px 20px;
+  }
+
+  .auth-panel:has(#signup-form.active) {
+    overflow-y: auto;
+  }
+
+  .auth-panel > .text-center {
+    margin-bottom: 12px !important;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    font-size: 1.2rem;
+  }
+
+  .auth-title {
+    font-size: 1.8rem;
+  }
+
+  .auth-subtitle {
+    margin-top: 4px;
+    font-size: 0.85rem;
+  }
+
+  .tab-switch {
+    padding: 4px;
+    margin-bottom: 12px;
+  }
+
+  .tab-indicator {
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+  }
+
+  .tab-btn {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
+  .auth-form {
+    gap: 6px;
+  }
+
+  .auth-divider {
+    margin: 2px 0 10px;
+  }
+
+  .auth-input {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+
+  .auth-submit {
+    padding: 9px 16px;
+    font-size: 0.9rem;
   }
 }
 
