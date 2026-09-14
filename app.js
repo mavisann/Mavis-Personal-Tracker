@@ -24,7 +24,7 @@
   var DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "E-Wallet", "Bank Transfer", "Allowance"];
   var DEFAULT_BUDGET_CATEGORIES = ["Food", "Transport", "School Supplies", "Rent", "Utilities", "Leisure", "Health", "Savings", "Income", "Other"];
 
-  // New UI Customization Constants
+  // UI defaults.
   var DEFAULT_ACCENT_COLOR = "#0d9488"; // Teal
   var DEFAULT_LAYOUT_DENSITY = "comfortable";
   var DEFAULT_SIDEBAR_EXPAND_ON_HOVER = true;
@@ -91,7 +91,6 @@
     var b = parseInt(h.substring(4, 6), 16);
     return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
   }
-  // New helper to get RGB components for CSS variables
   function hexToRgbComponents(hex) {
     var h = hex.replace("#", "");
     if (h.length === 3) h = h.split('').map(function(c) { return c + c; }).join('');
@@ -102,13 +101,12 @@
     return [r, g, b];
   }
 
-  // Helper to determine text color for contrast
   function getLuminance(hex) {
     var rgb = hexToRgbComponents(hex);
     var r = rgb[0] / 255;
     var g = rgb[1] / 255;
     var b = rgb[2] / 255;
-    // For sRGB, linearize first
+    // Linearize sRGB values.
     r = r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
     g = g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
     b = b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
@@ -673,7 +671,7 @@
     bottomNav += '<button class="bottom-nav-btn" onclick="window.authAPI.logout()">' + icon("logOut", 18) + '<span>Logout</span></button>';
 
     var html = '<div class="layout">';
-    var brandMark = icon("gradCap", 18, "brand-cap"); // Changed to use icon helper
+    var brandMark = icon("gradCap", 18, "brand-cap");
 
     var sidebarClasses = ['sidebar'];
     var sidebarEvents = '';
@@ -690,7 +688,7 @@
       '<div class="brand-badge">' + brandMark + '</div><span class="brand-name">' + escapeHtml(state.settings.appName || "Mavis") + '</span>' +
       '</button>' +
       '<nav class="nav">' + sidebarNav + '</nav>' +
-      '<div class="db-status-expanded">' + // Changed to use brandMark
+      '<div class="db-status-expanded">' +
         'Database: <span class="db-status-value">Saved</span>' +
       '</div>' +
       '<div class="db-status-collapsed"><span class="db-status-value-short"></span></div>' +
