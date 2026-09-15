@@ -6,12 +6,23 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const { google } = require('googleapis');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const GOOGLE_CALENDAR_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'openid'
+];
+const calendarOAuthClient = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  'postmessage'
+);
 
 if (!process.env.DATABASE_URL || !JWT_SECRET) {
   throw new Error('DATABASE_URL and JWT_SECRET environment variables are required.');
@@ -86,6 +97,141 @@ function publicUser(user) {
     email: user.email || null,
     googleLinked: Boolean(user.google_id)
   };
+}
+
+function dateOnly(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function addDays(dateString, days) {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function addHours(dateString, timeString, hours) {
+  const parts = String(timeString || '09:00').split(':').map(Number);
+  const totalMinutes = (parts[0] || 0) * 60 + (parts[1] || 0) + (hours * 60);
+  const dayOffset = Math.floor(totalMinutes / 1440);
+  const minutes = totalMinutes % 1440;
+  return `${addDays(dateString, dayOffset)}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}:00`;
+}
+
+function taskCalendarEvent(task) {
+  const date = dateOnly(task.due_date);
+  if (!date) return null;
+  const time = task.due_time ? String(task.due_time).slice(0, 5) : null;
+  const summary = task.title || 'StudyHub task';
+  const description = [task.description, task.courseName || task.category].filter(Boolean).join('\n');
+  return {
+    event: {
+      summary,
+      description,
+      location: task.location || undefined,
+      start: time
+        ? { dateTime: `${date}T${time}:00`, timeZone: process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Asia/Manila' }
+        : { date },
+      end: time
+        ? { dateTime: addHours(date, time, 1), timeZone: process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Asia/Manila' }
+        : { date: addDays(date, 1) }
+    }
+  };
+}
+
+function courseCalendarEvents(course) {
+  const startDate = dateOnly(course.start_date);
+  const schedules = Array.isArray(course.schedules) ? course.schedules : [];
+  if (!startDate) return [];
+  return schedules.map((schedule, index) => {
+    const days = Array.isArray(schedule.days) ? schedule.days : [];
+    const byDay = days.map((day) => ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][Number(day)]).filter(Boolean);
+    if (!byDay.length || !schedule.startTime || !schedule.endTime) return null;
+    const endDate = dateOnly(course.end_date);
+    const until = endDate ? `;UNTIL=${endDate.replace(/-/g, '')}T235959Z` : '';
+    return {
+      event: {
+        summary: `[Class] ${course.name || 'Course'}${course.code ? ` (${course.code})` : ''}`,
+        description: course.professor ? `Professor: ${course.professor}` : '',
+        location: schedule.room || undefined,
+        start: {
+          dateTime: `${startDate}T${String(schedule.startTime).slice(0, 5)}:00`,
+          timeZone: process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Asia/Manila'
+        },
+        end: {
+          dateTime: `${startDate}T${String(schedule.endTime).slice(0, 5)}:00`,
+          timeZone: process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Asia/Manila'
+        },
+        recurrence: [`RRULE:FREQ=WEEKLY;BYDAY=${byDay.join(',')}${until}`]
+      }
+    };
+  }).filter(Boolean);
+}
+
+async function getCalendarClient(userId) {
+  const result = await pool.query(
+    'SELECT google_refresh_token, google_calendar_sync_enabled FROM users WHERE id = $1',
+    [userId]
+  );
+  const user = result.rows[0];
+  if (!user || !user.google_refresh_token || !user.google_calendar_sync_enabled) return null;
+  const client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    'postmessage'
+  );
+  client.setCredentials({ refresh_token: user.google_refresh_token });
+  return google.calendar({ version: 'v3', auth: client });
+}
+
+async function syncTaskToCalendar(userId, task) {
+  const calendar = await getCalendarClient(userId);
+  if (!calendar || !task.due_date) return;
+  const event = taskCalendarEvent(task).event;
+  const options = { calendarId: 'primary', requestBody: event };
+  if (task.google_event_id) {
+    try {
+      await calendar.events.update({ ...options, eventId: task.google_event_id });
+      return;
+    } catch (error) {
+      if (error.code !== 404) throw error;
+    }
+  }
+  const inserted = await calendar.events.insert(options);
+  await pool.query('UPDATE tasks SET google_event_id = $1 WHERE id = $2 AND user_id = $3', [inserted.data.id, task.id, userId]);
+}
+
+async function syncCourseToCalendar(userId, course) {
+  const calendar = await getCalendarClient(userId);
+  if (!calendar) return;
+  const oldIds = Array.isArray(course.google_event_ids) ? course.google_event_ids : [];
+  const createdIds = [];
+  for (let i = 0; i < courseCalendarEvents(course).length; i += 1) {
+    const item = courseCalendarEvents(course)[i];
+    const existingId = oldIds[i];
+    if (existingId) {
+      try {
+        await calendar.events.update({ calendarId: 'primary', eventId: existingId, requestBody: item.event });
+        createdIds.push(existingId);
+        continue;
+      } catch (error) {
+        if (error.code !== 404) throw error;
+      }
+    }
+    const inserted = await calendar.events.insert({ calendarId: 'primary', requestBody: item.event });
+    createdIds.push(inserted.data.id);
+  }
+  for (const eventId of oldIds.slice(createdIds.length)) {
+    try { await calendar.events.delete({ calendarId: 'primary', eventId }); } catch (error) {
+      if (error.code !== 404) throw error;
+    }
+  }
+  await pool.query('UPDATE courses SET google_event_ids = $1::jsonb WHERE id = $2 AND user_id = $3', [JSON.stringify(createdIds), course.id, userId]);
+}
+
+function runCalendarOperation(operation, label) {
+  Promise.resolve().then(operation).catch((error) => console.error(`${label} failed:`, error));
 }
 
 // Authentication Middleware
@@ -340,6 +486,96 @@ app.post('/api/auth/google/unlink', authenticateToken, async (req, res) => {
 });
 
 // ----------------------------------------------------
+// GOOGLE CALENDAR ROUTES
+// ----------------------------------------------------
+
+app.get('/api/user/google-status', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT google_email, google_refresh_token, google_calendar_sync_enabled FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = result.rows[0];
+    res.json({
+      linked: Boolean(user && user.google_refresh_token),
+      email: user ? user.google_email : null,
+      syncEnabled: Boolean(user && user.google_refresh_token && user.google_calendar_sync_enabled)
+    });
+  } catch (error) {
+    console.error('Google status lookup failed:', error);
+    res.status(500).json({ error: 'Could not load Google account status.' });
+  }
+});
+
+app.post('/api/user/google-connect', authenticateToken, async (req, res) => {
+  const { code } = req.body || {};
+  if (!code) return res.status(400).json({ error: 'Google authorization code is required.' });
+  try {
+    const { tokens } = await calendarOAuthClient.getToken(code);
+    if (!tokens.refresh_token) return res.status(400).json({ error: 'Google did not return a refresh token. Please try again.' });
+    calendarOAuthClient.setCredentials(tokens);
+    const userInfo = await calendarOAuthClient.request({ url: 'https://openidconnect.googleapis.com/v1/userinfo' });
+    const googleUser = userInfo.data;
+    if (!googleUser.sub || !googleUser.email) return res.status(400).json({ error: 'Google account information is incomplete.' });
+    const result = await pool.query(
+      `UPDATE users
+       SET google_id = $1, google_email = $2, google_refresh_token = $3,
+           google_calendar_sync_enabled = TRUE
+       WHERE id = $4
+       RETURNING google_email, google_calendar_sync_enabled`,
+      [googleUser.sub, googleUser.email.toLowerCase(), tokens.refresh_token, req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found.' });
+    runCalendarOperation(() => Promise.all([
+      pool.query('SELECT * FROM tasks WHERE user_id = $1', [req.user.id]),
+      pool.query('SELECT * FROM courses WHERE user_id = $1', [req.user.id])
+    ]).then(([tasks, courses]) => Promise.all([
+      ...tasks.rows.map((task) => syncTaskToCalendar(req.user.id, task)),
+      ...courses.rows.map((course) => syncCourseToCalendar(req.user.id, course))
+    ])), 'Initial Google Calendar sync');
+    res.json({ linked: true, email: result.rows[0].google_email, syncEnabled: true });
+  } catch (error) {
+    console.error('Google Calendar connection failed:', error);
+    res.status(500).json({ error: 'Could not connect Google Calendar.' });
+  }
+});
+
+app.post('/api/user/google-toggle-sync', authenticateToken, async (req, res) => {
+  if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean.' });
+  try {
+    const result = await pool.query(
+      `UPDATE users SET google_calendar_sync_enabled = $1
+       WHERE id = $2 AND google_refresh_token IS NOT NULL
+       RETURNING google_calendar_sync_enabled`,
+      [req.body.enabled, req.user.id]
+    );
+    if (!result.rows.length) return res.status(400).json({ error: 'Connect a Google account before changing sync.' });
+    res.json({ syncEnabled: result.rows[0].google_calendar_sync_enabled });
+  } catch (error) {
+    console.error('Google Calendar sync toggle failed:', error);
+    res.status(500).json({ error: 'Could not update calendar sync.' });
+  }
+});
+
+app.post('/api/user/google-disconnect', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE users
+       SET google_id = NULL, google_email = NULL, google_refresh_token = NULL,
+           google_calendar_sync_enabled = FALSE
+       WHERE id = $1
+       RETURNING id`,
+      [req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found.' });
+    res.json({ linked: false, email: null, syncEnabled: false });
+  } catch (error) {
+    console.error('Google Calendar disconnect failed:', error);
+    res.status(500).json({ error: 'Could not disconnect Google Calendar.' });
+  }
+});
+
+// ----------------------------------------------------
 // DATA ISOLATION ROUTES (Multi-Tenancy)
 // ----------------------------------------------------
 
@@ -356,14 +592,18 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
     const rows = req.body;
-    await Promise.all(rows.map((row) => pool.query(
+    await Promise.all(rows.map(async (row) => {
+      const result = await pool.query(
         `INSERT INTO courses (id, name, code, professor, start_date, end_date, color, schedules, user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, code = EXCLUDED.code, professor = EXCLUDED.professor, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, color = EXCLUDED.color, schedules = EXCLUDED.schedules
-         WHERE courses.user_id = EXCLUDED.user_id`,
+         WHERE courses.user_id = EXCLUDED.user_id
+         RETURNING *`,
         [row.id, row.name, row.code, row.professor, row.start_date, row.end_date, row.color, JSON.stringify(row.schedules), req.user.id]
-      )));
+      );
+      runCalendarOperation(() => syncCourseToCalendar(req.user.id, result.rows[0]), 'Course calendar sync');
+    }));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -374,7 +614,22 @@ app.delete('/api/courses', authenticateToken, async (req, res) => {
   try {
     const { ids } = req.body;
     if (ids && ids.length) {
+      const existing = await pool.query(
+        'SELECT id, google_event_ids FROM courses WHERE id = ANY($1) AND user_id = $2',
+        [ids, req.user.id]
+      );
       await pool.query('DELETE FROM courses WHERE id = ANY($1) AND user_id = $2', [ids, req.user.id]);
+      runCalendarOperation(async () => {
+        const calendar = await getCalendarClient(req.user.id);
+        if (!calendar) return;
+        for (const course of existing.rows) {
+          for (const eventId of (Array.isArray(course.google_event_ids) ? course.google_event_ids : [])) {
+            try { await calendar.events.delete({ calendarId: 'primary', eventId }); } catch (error) {
+              if (error.code !== 404) throw error;
+            }
+          }
+        }
+      }, 'Course calendar deletion');
     }
     res.json({ success: true });
   } catch (err) {
@@ -395,14 +650,18 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
 app.post('/api/tasks', authenticateToken, async (req, res) => {
   try {
     const rows = req.body;
-    await Promise.all(rows.map((row) => pool.query(
+    await Promise.all(rows.map(async (row) => {
+      const result = await pool.query(
         `INSERT INTO tasks (id, category, title, "courseName", "taskType", "taskCode", status, priority, due_date, due_time, description, location, user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-         ON CONFLICT (id) DO UPDATE SET
-         category = EXCLUDED.category, title = EXCLUDED.title, "courseName" = EXCLUDED."courseName", "taskType" = EXCLUDED."taskType", "taskCode" = EXCLUDED."taskCode", status = EXCLUDED.status, priority = EXCLUDED.priority, due_date = EXCLUDED.due_date, due_time = EXCLUDED.due_time, description = EXCLUDED.description, location = EXCLUDED.location
-         WHERE tasks.user_id = EXCLUDED.user_id`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (id) DO UPDATE SET
+        category = EXCLUDED.category, title = EXCLUDED.title, "courseName" = EXCLUDED."courseName", "taskType" = EXCLUDED."taskType", "taskCode" = EXCLUDED."taskCode", status = EXCLUDED.status, priority = EXCLUDED.priority, due_date = EXCLUDED.due_date, due_time = EXCLUDED.due_time, description = EXCLUDED.description, location = EXCLUDED.location
+        WHERE tasks.user_id = EXCLUDED.user_id
+        RETURNING *`,
         [row.id, row.category, row.title, row.courseName, row.taskType, row.taskCode, row.status, row.priority, row.due_date, row.due_time, row.description, row.location, req.user.id]
-      )));
+      );
+      runCalendarOperation(() => syncTaskToCalendar(req.user.id, result.rows[0]), 'Task calendar sync');
+    }));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -413,7 +672,21 @@ app.delete('/api/tasks', authenticateToken, async (req, res) => {
   try {
     const { ids } = req.body;
     if (ids && ids.length) {
+      const existing = await pool.query(
+        'SELECT id, google_event_id FROM tasks WHERE id = ANY($1) AND user_id = $2',
+        [ids, req.user.id]
+      );
       await pool.query('DELETE FROM tasks WHERE id = ANY($1) AND user_id = $2', [ids, req.user.id]);
+      runCalendarOperation(async () => {
+        const calendar = await getCalendarClient(req.user.id);
+        if (!calendar) return;
+        for (const task of existing.rows) {
+          if (!task.google_event_id) continue;
+          try { await calendar.events.delete({ calendarId: 'primary', eventId: task.google_event_id }); } catch (error) {
+            if (error.code !== 404) throw error;
+          }
+        }
+      }, 'Task calendar deletion');
     }
     res.json({ success: true });
   } catch (err) {

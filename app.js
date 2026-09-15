@@ -155,7 +155,9 @@
   }
 
   /* ---------------- State ---------------- */
-  var state = { courses: [], tasks: [], transactions: [], toasts: [], settings: {
+  var state = { courses: [], tasks: [], transactions: [], toasts: [], googleCalendar: {
+    connected: false, syncEnabled: false, lastSyncedAt: null, lastSyncError: null
+  }, settings: {
     theme: "light",
     appName: "Mavis",
     budgetCategories: DEFAULT_BUDGET_CATEGORIES.slice(),
@@ -367,6 +369,7 @@
       state.courses = [];
       state.tasks = [];
       state.transactions = [];
+      state.googleCalendar = { connected: false, syncEnabled: false, lastSyncedAt: null, lastSyncError: null };
       state.settings = defaultSettings();
       return;
     }
@@ -409,7 +412,20 @@
       state.courses = [];
       state.tasks = [];
       state.transactions = [];
+      state.googleCalendar = { connected: false, syncEnabled: false, lastSyncedAt: null, lastSyncError: null };
       state.settings = defaultSettings();
+    }
+  }
+
+  async function loadGoogleCalendarStatus() {
+    if (!isApiReady()) return;
+    try {
+      state.googleCalendar = await apiFetch("/api/user/google-status");
+      if (ui.tab === "settings" && ui.settingsTab === "calendar") render();
+    } catch (err) {
+      // The board remains usable when the optional calendar migration has not
+      // been applied yet or Google Calendar is not configured.
+      console.warn("Google Calendar status unavailable.", err);
     }
   }
 
@@ -889,7 +905,7 @@
     var taskTypes = Array.isArray(state.settings.taskTypes) && state.settings.taskTypes.length ? state.settings.taskTypes.slice() : DEFAULT_TASK_TYPES.slice();
     var html = '<div class="toolbar"><h2 style="margin:0;font-size:18px">Website settings</h2><div class="toolbar-right"><button class="btn" onclick="App.setTab(\'dashboard\')">Back to dashboard</button></div></div>';
 
-    var tabs = { interface: 'Interface', tasks: 'Tasks', budget: 'Budget', account: 'Account' };
+    var tabs = { interface: 'Interface', tasks: 'Tasks', budget: 'Budget', calendar: 'Google Calendar', account: 'Account' };
     html += '<div class="view-switch" style="margin-bottom: 20px;">' +
         Object.keys(tabs).map(function(tabId) {
             return '<button class="' + (ui.settingsTab === tabId ? "active" : "") + '" onclick="App.setSettingsTab(\'' + tabId + '\')">' + tabs[tabId] + '</button>';
@@ -920,6 +936,16 @@
             '<div class="setting-switch-row"><span>Today\'s Schedule Timeline</span><label class="switch"><input type="checkbox" ' + (state.settings.showScheduleTimeline ? 'checked' : '') + ' onchange="App.toggleSetting(\'showScheduleTimeline\')"><span class="slider"></span></label></div>' +
             '</div></div>' +
         '</div>';
+    } else if (ui.settingsTab === 'calendar') {
+        var calendar = state.googleCalendar || {};
+        html += '<div class="card"><h3 class="card-title">' + icon("calendarDays", 16) + ' Google Calendar</h3>' +
+            '<p style="color:var(--text-muted);margin-top:0">Keep your StudyHub tasks and recurring course schedules in your Google Calendar. StudyHub only manages events it creates.</p>' +
+            '<div class="setting-switch-row" style="margin:16px 0"><span>Account</span><strong>' + (calendar.linked ? 'Connected as ' + escapeHtml(calendar.email || 'Google account') : 'No Google Account Linked') + '</strong></div>' +
+            '<div class="setting-switch-row" style="margin:16px 0"><span>Calendar Auto-Sync</span><label class="switch"><input type="checkbox" ' + (calendar.syncEnabled ? 'checked' : '') + (calendar.linked ? '' : 'disabled') + ' onchange="App.toggleGoogleCalendarSync(this.checked)"><span class="slider"></span></label></div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="App.connectGoogleCalendar()">' + (calendar.linked ? 'Switch Google Account' : 'Connect Google Account') + '</button>' +
+            (calendar.linked ? '<button class="btn" style="background:var(--rose)" onclick="App.disconnectGoogleCalendar()">Disconnect Account</button>' : '') + '</div>' +
+            '<p style="font-size:12px;color:var(--text-faint);margin-bottom:0">Google authorization is handled securely. Calendar tokens are never sent to the browser.</p>' +
+            '</div>';
     } else if (ui.settingsTab === 'tasks') {
         html += '<div>' +
             '<div class="card"><h3 class="card-title">Task settings</h3>' +
@@ -2482,6 +2508,70 @@
       });
     },
     setSettingsTab: function (v) { ui.settingsTab = v; render(); },
+    connectGoogleCalendar: async function () {
+      try {
+        if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+          throw new Error("Google authorization is still loading. Please try again.");
+        }
+        var config = await fetch(API_BASE_URL + "/api/config").then(function (response) {
+          if (!response.ok) throw new Error("Google Calendar is unavailable.");
+          return response.json();
+        });
+        if (!config.googleClientId) throw new Error("Google Calendar is not configured.");
+        var client = window.google.accounts.oauth2.initCodeClient({
+          client_id: config.googleClientId,
+          scope: "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email openid",
+          ux_mode: "popup",
+          access_type: "offline",
+          prompt: "consent",
+          callback: function (response) {
+            if (!response || !response.code) {
+              showToast("Google authorization was cancelled.", "error");
+              return;
+            }
+            apiFetch("/api/user/google-connect", {
+              method: "POST",
+              body: JSON.stringify({ code: response.code })
+            }).then(function (status) {
+              state.googleCalendar = status;
+              showToast("Google Calendar connected.", "success");
+              render();
+            }).catch(function (error) {
+              showToast(error.message || "Could not connect Google Calendar.", "error");
+            });
+          },
+          error_callback: function () {
+            showToast("Google authorization could not be started.", "error");
+          }
+        });
+        client.requestCode();
+      } catch (error) {
+        showToast(error.message || "Google Calendar is unavailable.", "error");
+      }
+    },
+    toggleGoogleCalendarSync: function (enabled) {
+      apiFetch("/api/user/google-toggle-sync", {
+        method: "POST",
+        body: JSON.stringify({ enabled: Boolean(enabled) })
+      }).then(function (status) {
+        state.googleCalendar.syncEnabled = status.syncEnabled;
+        showToast(status.syncEnabled ? "Calendar auto-sync enabled." : "Calendar auto-sync disabled.", "success");
+        render();
+      }).catch(function (error) {
+        showToast(error.message || "Could not update calendar sync.", "error");
+        render();
+      });
+    },
+    disconnectGoogleCalendar: function () {
+      if (!window.confirm("Disconnect your Google account from Mavis?")) return;
+      apiFetch("/api/user/google-disconnect", { method: "POST", body: JSON.stringify({}) }).then(function (status) {
+        state.googleCalendar = status;
+        showToast("Google account disconnected.", "success");
+        render();
+      }).catch(function (error) {
+        showToast(error.message || "Could not disconnect Google account.", "error");
+      });
+    },
     updateAccount: function (event) {
       event.preventDefault();
       var newPassword = document.getElementById("account-new-password").value;
@@ -2832,6 +2922,7 @@
       hideInitialLoader();
       ui.lastSaveTime = new Date(); // Initialize lastSaveTime after data loads
       App.setTab(state.settings.defaultLandingTab || DEFAULT_LANDING_TAB); // Set initial tab based on settings
+      loadGoogleCalendarStatus();
       setInterval(renderSaveStatus, 1000);
       // After a delay (longer than the longest animation), remove the class.
       // This ensures animations only run on the very first page load.
