@@ -108,6 +108,7 @@ body.auth-page {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   animation: fadeInUp 0.8s ease both;
 }
 
@@ -251,7 +252,7 @@ body.auth-page {
   position: relative;
   min-height: 0;
   flex: 0 0 auto;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .auth-divider {
@@ -415,9 +416,12 @@ body.auth-page {
 
 .password-field {
   position: relative;
+  display: block;
+  width: 100%;
 }
 
-.password-field .password-input {
+.password-field .password-input,
+.app-password-field .password-input {
   padding-right: 48px;
 }
 
@@ -451,6 +455,10 @@ body.auth-page {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.app-password-field .input {
+  width: 100%;
 }
 
 .auth-submit {
@@ -595,25 +603,47 @@ body.auth-page {
 
 @media (max-width: 520px) {
   body.auth-page {
+    height: auto;
+    min-height: 100dvh;
     padding: 10px 12px 8px;
+    overflow-y: auto;
   }
 
   .auth-shell {
-    flex: 1 1 0;
-    min-height: 0;
+    flex: 0 0 auto;
+    min-height: calc(100dvh - 18px);
+    height: auto;
   }
 
   .auth-card-wrap {
-    height: min(680px, calc(100dvh - 56px));
+    height: auto;
+    min-height: 0;
     border-radius: 22px;
   }
 
   .auth-panel {
     padding: 16px 14px;
+    overflow: visible;
   }
 
   .tab-btn {
     padding: 10px 12px;
+  }
+
+  .terms-modal-overlay {
+    align-items: flex-start;
+    padding: 10px;
+  }
+
+  .terms-modal {
+    max-height: calc(100dvh - 20px);
+    border-radius: 18px;
+  }
+
+  .terms-modal-header,
+  .terms-modal-body {
+    padding-left: 18px;
+    padding-right: 18px;
   }
 }
 
@@ -843,6 +873,13 @@ html[data-theme="dark"] .topbar-brand-badge {
     min-height: 100dvh;
   }
 
+  /* The desktop collapsed-sidebar selector has higher specificity than the
+     mobile layout rule. Override it so the hidden sidebar never reserves a
+     narrow first grid column on phones. */
+  .layout:has(.sidebar.closed) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .sidebar { display: none; }
   .topbar {
     display: flex;
@@ -862,12 +899,28 @@ html[data-theme="dark"] .topbar-brand-badge {
     padding: 80px 16px calc(96px + env(safe-area-inset-bottom));
   }
 
+  .topbar-left,
+  .topbar-text-group {
+    min-width: 0;
+  }
+
+  .topbar-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-status-badge {
+    display: none;
+  }
+
   /* Apply compact styles automatically on mobile */
   .card { padding: 12px; border-radius: 14px; }
   .grid { gap: 10px; }
   .metric { padding: 16px; border-radius: 16px; }
   .field { margin-bottom: 12px; }
   .input, select.input, textarea.input { padding: 8px 12px; border-radius: 10px; font-size: 13px; }
+  .app-password-field .input { padding-right: 42px; }
   .btn { padding: 8px 14px; font-size: 13px; border-radius: 10px; }
   .badge { padding: 3px 8px; font-size: 11px; }
   .task-row { padding: 10px 12px; border-radius: 10px; margin-bottom: 6px; }
@@ -2478,7 +2531,7 @@ button {
   max-width: 100%;
 }
 
-/* The mobile bottom nav has seven actions, so don't let flex-shrinking
+/* Keep bottom-nav actions evenly sized without letting flex-shrinking
    squeeze the labels/icons outside the viewport. The topbar logout below
    also makes logout directly reachable at every narrow width. */
 .bottom-nav-btn {

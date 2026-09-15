@@ -145,7 +145,9 @@
     check: '<polyline points="20 6 9 17 4 12"/>',
     dropper: '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/><path d="M14.5 11.5 13 13l-1.5-1.5L10 13l1.5 1.5L10 16l1.5 1.5L13 16l1.5 1.5L16 16l-1.5-1.5L16 13l-1.5-1.5z"/>',
     arrowUpRight: '<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>',
-    search: '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>'
+    search: '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>',
+    eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M3 3l18 18"/><path d="M10.58 10.58A2 2 0 0 0 13.42 13.42"/><path d="M9.88 5.08A10.42 10.42 0 0 1 12 5c6.5 0 10 7 10 7a15.86 15.86 0 0 1-4 5.04"/><path d="M6.61 6.61A15.7 15.7 0 0 0 2 12s3.5 7 10 7a10.44 10.44 0 0 0 5.39-1.61"/>'
   };
   function icon(name, size, cls) {
     size = size || 16;
@@ -627,7 +629,23 @@
     renderSaveStatus();
     applySettingsToDom(); // Apply settings to DOM after rendering shell
     renderToasts();
+    setupPasswordToggles();
     if (ui.tab === "settings" && ui.settingsTab === "account") setupGoogleLinkButton();
+  }
+
+  function setupPasswordToggles() {
+    document.querySelectorAll(".toggle-password").forEach(function (button) {
+      var input = document.getElementById(button.getAttribute("data-target"));
+      if (!input || button.dataset.bound === "true") return;
+      button.dataset.bound = "true";
+      button.addEventListener("click", function () {
+        var isVisible = input.type === "text";
+        input.type = isVisible ? "password" : "text";
+        button.setAttribute("aria-label", isVisible ? "Show password" : "Hide password");
+        button.innerHTML = icon(isVisible ? "eye" : "eyeOff", 18);
+        input.focus();
+      });
+    });
   }
 
   function setupGoogleLinkButton() {
@@ -667,8 +685,6 @@
     var bottomNav = nav.map(function (n) {
       return '<button class="bottom-nav-btn ' + (ui.tab === n.id ? "active" : "") + '" onclick="App.setTab(\'' + n.id + "')\">" + icon(n.ic, 18) + "<span>" + n.label + "</span></button>";
     }).join("");
-    // Add logout button to bottom nav
-    bottomNav += '<button class="bottom-nav-btn" onclick="window.authAPI.logout()">' + icon("logOut", 18) + '<span>Logout</span></button>';
 
     var html = '<div class="layout">';
     var brandMark = icon("gradCap", 18, "brand-cap");
@@ -927,8 +943,8 @@
           '<div class="card"><h3 class="card-title">Account</h3>' +
           '<form onsubmit="App.updateAccount(event)" style="display:grid;gap:12px">' +
           '<label class="field"><span class="field-label">Username</span><input id="account-username" class="input" value="' + escapeHtml(session && session.username ? session.username : '') + '" minlength="3" maxlength="40" pattern="[A-Za-z0-9_]{3,40}" required></label>' +
-          '<label class="field"><span class="field-label">New password</span><input id="account-new-password" class="input" type="password" minlength="6" placeholder="' + (session && session.email ? 'Leave blank to keep current password' : 'Create a password') + '"></label>' +
-          '<label class="field"><span class="field-label">Current password <span style="font-weight:400;color:var(--text-muted)">(required when changing an existing password)</span></span><input id="account-current-password" class="input" type="password"></label>' +
+          '<label class="field"><span class="field-label">New password</span><span class="password-field app-password-field"><input id="account-new-password" class="input password-input" type="password" minlength="6" placeholder="' + (session && session.email ? 'Leave blank to keep current password' : 'Create a password') + '"><button type="button" class="toggle-password app-toggle-password" data-target="account-new-password" aria-label="Show password">' + icon("eye", 18) + '</button></span></label>' +
+          '<label class="field"><span class="field-label">Current password <span style="font-weight:400;color:var(--text-muted)">(required when changing an existing password)</span></span><span class="password-field app-password-field"><input id="account-current-password" class="input password-input" type="password"><button type="button" class="toggle-password app-toggle-password" data-target="account-current-password" aria-label="Show password">' + icon("eye", 18) + '</button></span></label>' +
           '<button class="btn" type="submit">Save account changes</button>' +
           '</form>' +
           '<hr style="margin:20px 0;border:0;border-top:1px solid var(--border-color)">' +
