@@ -239,13 +239,26 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function setupGoogleSignIn() {
-    if (!window.authAPI || !window.authAPI.initializeGoogleButton) return;
-    Promise.all([
-      window.authAPI.initializeGoogleButton('google-login-button', handleGoogleCredential, 'signin_with'),
-      window.authAPI.initializeGoogleButton('google-signup-button', handleGoogleCredential, 'signup_with')
-    ]).catch(function (error) {
-      showError(error.message || 'Google sign-in is unavailable.');
-    });
+    if (!window.authAPI || !window.authAPI.initializeGooglePrompt) return;
+    window.authAPI.initializeGooglePrompt(handleGoogleCredential)
+      .then(function (openGooglePrompt) {
+        ['google-login-button', 'google-signup-button'].forEach(function (buttonId) {
+          const button = document.getElementById(buttonId);
+          if (!button) return;
+          button.addEventListener('click', function () {
+            if (!requireTermsAgreement()) return;
+            hideError();
+            openGooglePrompt();
+          });
+        });
+      })
+      .catch(function (error) {
+        document.querySelectorAll('.google-auth-button').forEach(function (button) {
+          button.disabled = true;
+          button.title = 'Google Sign-In is unavailable. Please reload and try again.';
+        });
+        showError(error.message || 'Google sign-in is unavailable.');
+      });
   }
 
   setupPasswordToggles();

@@ -58,7 +58,10 @@
         <div id="error-box" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm" role="alert" aria-live="assertive"></div>
         <div class="auth-form-stage">
           <form id="login-form" class="auth-form active">
-            <div id="google-login-button" class="mb-4 flex justify-center"></div>
+            <button id="google-login-button" class="google-auth-button" type="button">
+              <span class="google-auth-icon" aria-hidden="true">G</span>
+              <span>Sign in with Google</span>
+            </button>
             <div class="auth-divider"><span>or log in with username</span></div>
             <div>
               <label for="login-username" class="field-label">Username</label>
@@ -95,7 +98,10 @@
           </form>
 
           <form id="signup-form" class="auth-form inactive">
-            <div id="google-signup-button" class="mb-4 flex justify-center"></div>
+            <button id="google-signup-button" class="google-auth-button" type="button">
+              <span class="google-auth-icon" aria-hidden="true">G</span>
+              <span>Sign up with Google</span>
+            </button>
             <div class="auth-divider"><span>or sign up with username</span></div>
             <div>
               <label for="signup-email" class="field-label">Email <span style="font-weight:400;color:var(--text-muted)">(optional, enables Google login later)</span></label>
@@ -177,7 +183,7 @@
   </div>
   <footer class="auth-footer"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="mailto:prince.semillanoquilantang@gmail.com">Support</a><a href="https://github.com/mavisann/Mavis-Personal-Tracker">GitHub</a></footer>
 
-  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script src="https://accounts.google.com/gsi/client" defer></script>
   <script src="supabaseClient.js"></script>
   <script src="login.js" defer></script>
   <script>

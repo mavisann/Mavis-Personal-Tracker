@@ -971,7 +971,7 @@
             '<div class="setting-switch-row" style="margin:16px 0"><span>Calendar Auto-Sync</span><label class="switch"><input type="checkbox" ' + (calendar.syncEnabled ? 'checked' : '') + (isLinked ? '' : ' disabled') + ' onchange="App.toggleGoogleCalendarSync(this.checked)"><span class="slider"></span></label></div>' +
             '<div class="setting-switch-row" style="margin:16px 0"><span>Show StudyHub Calendar</span><label class="switch"><input type="checkbox" ' + (calendar.calendarVisible ? 'checked' : '') + (isLinked ? '' : ' disabled') + ' onchange="App.toggleGoogleCalendarVisibility(this.checked)"><span class="slider"></span></label></div>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="App.connectGoogleCalendar()">' + (isLinked ? 'Switch Google Account' : 'Connect Google Account') + '</button>' +
-            (isLinked ? '<button class="btn" style="background:var(--rose)" onclick="App.disconnectGoogleCalendar()">Disconnect Account</button><button class="btn" onclick="App.syncGoogleCalendarNow()">Sync Existing Items Now</button>' : '') + '</div>' +
+            (isLinked ? '<button class="btn" style="background:var(--rose)" onclick="App.disconnectGoogleCalendar()">Disconnect Account</button><button class="btn" onclick="App.syncGoogleCalendarNow()">Sync now</button>' : '') + '</div>' +
             '<div style="display:grid;gap:6px;margin-top:16px;color:var(--text-muted);font-size:12px;line-height:1.5">' +
             '<span>Switching accounts keeps existing events in the previous Google Calendar and starts syncing future changes to the new account.</span>' +
             '<span>Disconnecting stops future synchronization. Events already created in Google Calendar are not deleted.</span>' +
