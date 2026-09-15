@@ -667,15 +667,27 @@
   function setupGoogleLinkButton() {
     if (!window.authAPI || !window.authAPI.initializeGoogleButton) return;
     window.authAPI.initializeGoogleButton("google-link-button", function (response) {
-      window.authAPI.linkGoogle(response.credential)
-        .then(function (user) {
-          showToast("Google account linked successfully.", "success");
-          render();
-        })
-        .catch(function (error) {
-          showToast(error.message || "Could not link Google account.", "error");
-        });
-    }).catch(function (error) {
+      var session = window.authAPI.getSession ? window.authAPI.getSession() : null;
+      var linkAccount = function () {
+        if (ui.modal && ui.modal.type === "confirmation") App.closeModal();
+        window.authAPI.linkGoogle(response.credential)
+          .then(function () {
+            showToast("Google account updated successfully.", "success");
+            render();
+          })
+          .catch(function (error) {
+            showToast(error.message || "Could not update Google account.", "error");
+          });
+      };
+      if (session && session.googleLinked) {
+        App.openConfirmationModal(
+          "Switch the Google account used for login? You must keep a password set if you later want to disconnect Google Login.",
+          linkAccount
+        );
+      } else {
+        linkAccount();
+      }
+    }, "continue_with").catch(function (error) {
       showToast(error.message || "Google Sign-In is unavailable.", "error");
     });
   }
@@ -938,13 +950,18 @@
         '</div>';
     } else if (ui.settingsTab === 'calendar') {
         var calendar = state.googleCalendar || {};
+        var isLinked = Boolean(calendar.linked);
+        var accountLabel = isLinked ? 'Connected as ' + escapeHtml(calendar.email || 'Google account') : 'No Google Account Linked';
         html += '<div class="card"><h3 class="card-title">' + icon("calendarDays", 16) + ' Google Calendar</h3>' +
             '<p style="color:var(--text-muted);margin-top:0">Keep your StudyHub tasks and recurring course schedules in your Google Calendar. StudyHub only manages events it creates.</p>' +
-            '<div class="setting-switch-row" style="margin:16px 0"><span>Account</span><strong>' + (calendar.linked ? 'Connected as ' + escapeHtml(calendar.email || 'Google account') : 'No Google Account Linked') + '</strong></div>' +
-            '<div class="setting-switch-row" style="margin:16px 0"><span>Calendar Auto-Sync</span><label class="switch"><input type="checkbox" ' + (calendar.syncEnabled ? 'checked' : '') + (calendar.linked ? '' : 'disabled') + ' onchange="App.toggleGoogleCalendarSync(this.checked)"><span class="slider"></span></label></div>' +
-            '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="App.connectGoogleCalendar()">' + (calendar.linked ? 'Switch Google Account' : 'Connect Google Account') + '</button>' +
-            (calendar.linked ? '<button class="btn" style="background:var(--rose)" onclick="App.disconnectGoogleCalendar()">Disconnect Account</button>' : '') + '</div>' +
-            '<p style="font-size:12px;color:var(--text-faint);margin-bottom:0">Google authorization is handled securely. Calendar tokens are never sent to the browser.</p>' +
+            '<div class="setting-switch-row" style="margin:16px 0"><span>Account</span><strong>' + accountLabel + '</strong></div>' +
+            '<div class="setting-switch-row" style="margin:16px 0"><span>Calendar Auto-Sync</span><label class="switch"><input type="checkbox" ' + (calendar.syncEnabled ? 'checked' : '') + (isLinked ? '' : ' disabled') + ' onchange="App.toggleGoogleCalendarSync(this.checked)"><span class="slider"></span></label></div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="App.connectGoogleCalendar()">' + (isLinked ? 'Switch Google Account' : 'Connect Google Account') + '</button>' +
+            (isLinked ? '<button class="btn" style="background:var(--rose)" onclick="App.disconnectGoogleCalendar()">Disconnect Account</button>' : '') + '</div>' +
+            '<div style="display:grid;gap:6px;margin-top:16px;color:var(--text-muted);font-size:12px;line-height:1.5">' +
+            '<span>Switching accounts keeps existing events in the previous Google Calendar and starts syncing future changes to the new account.</span>' +
+            '<span>Disconnecting stops future synchronization. Events already created in Google Calendar are not deleted.</span>' +
+            '<span style="color:var(--text-faint)">Google authorization is handled securely. Calendar tokens are never sent to the browser.</span></div>' +
             '</div>';
     } else if (ui.settingsTab === 'tasks') {
         html += '<div>' +
@@ -965,7 +982,9 @@
         '</div>';
     } else if (ui.settingsTab === 'account') {
         var session = window.authAPI && window.authAPI.getSession ? window.authAPI.getSession() : null;
-        html += '<div class="grid grid-2" style="align-items:start">' +
+        var googleLoginLinked = Boolean(session && session.googleLinked);
+        var googleLoginEmail = session && session.googleLinked && session.email ? session.email : null;
+        html += '<div class="account-settings-layout">' +
           '<div class="card"><h3 class="card-title">Account</h3>' +
           '<form onsubmit="App.updateAccount(event)" style="display:grid;gap:12px">' +
           '<label class="field"><span class="field-label">Username</span><input id="account-username" class="input" value="' + escapeHtml(session && session.username ? session.username : '') + '" minlength="3" maxlength="40" pattern="[A-Za-z0-9_]{3,40}" required></label>' +
@@ -974,10 +993,11 @@
           '<button class="btn" type="submit">Save account changes</button>' +
           '</form>' +
           '<hr style="margin:20px 0;border:0;border-top:1px solid var(--border-color)">' +
-          '<p class="empty-note">Google account: <strong>' + escapeHtml(session && session.email ? session.email : 'Not linked') + '</strong></p>' +
-          '<p class="empty-note">Link or replace your Google account to use Google login. Set a password before unlinking Google.</p>' +
+          '<h3 class="card-title" style="margin-top:20px">' + icon("user", 16) + ' Google Login Account</h3>' +
+          '<div class="setting-switch-row" style="margin:16px 0"><span>Account</span><strong>' + (googleLoginLinked ? 'Connected as ' + escapeHtml(googleLoginEmail || 'Google account') : 'No Google Login Account Linked') + '</strong></div>' +
+          '<p class="empty-note">' + (googleLoginLinked ? 'Use the button below to switch the Google account used for signing in. Your password and StudyHub data remain unchanged.' : 'Link a Google account to sign in with Google. Set a password before disconnecting Google Login.') + '</p>' +
           '<div id="google-link-button" style="margin-top:16px"></div>' +
-          '<button class="btn-ghost" type="button" onclick="App.unlinkGoogle()">Unlink Google account</button>' +
+          (googleLoginLinked ? '<button class="btn-ghost" type="button" onclick="App.unlinkGoogle()">Disconnect Google Login</button>' : '') +
           '</div></div>';
     }
 
@@ -2509,6 +2529,20 @@
     },
     setSettingsTab: function (v) { ui.settingsTab = v; render(); },
     connectGoogleCalendar: async function () {
+      var calendar = state.googleCalendar || {};
+      if (calendar.linked) {
+        App.openConfirmationModal(
+          "Switching accounts will stop updating the current Google Calendar. Events already created there will remain in that account. Continue?",
+          function () {
+            App.closeModal();
+            App.startGoogleCalendarConnection();
+          }
+        );
+        return;
+      }
+      App.startGoogleCalendarConnection();
+    },
+    startGoogleCalendarConnection: async function () {
       try {
         if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
           throw new Error("Google authorization is still loading. Please try again.");
@@ -2563,14 +2597,19 @@
       });
     },
     disconnectGoogleCalendar: function () {
-      if (!window.confirm("Disconnect your Google account from Mavis?")) return;
-      apiFetch("/api/user/google-disconnect", { method: "POST", body: JSON.stringify({}) }).then(function (status) {
-        state.googleCalendar = status;
-        showToast("Google account disconnected.", "success");
-        render();
-      }).catch(function (error) {
-        showToast(error.message || "Could not disconnect Google account.", "error");
-      });
+      App.openConfirmationModal(
+        "Disconnect Google Calendar from StudyHub? Future tasks and course changes will no longer sync. Existing Google Calendar events will not be deleted.",
+        function () {
+          App.closeModal();
+          apiFetch("/api/user/google-disconnect", { method: "POST", body: JSON.stringify({}) }).then(function (status) {
+            state.googleCalendar = status;
+            showToast("Google Calendar account disconnected.", "success");
+            render();
+          }).catch(function (error) {
+            showToast(error.message || "Could not disconnect Google Calendar.", "error");
+          });
+        }
+      );
     },
     updateAccount: function (event) {
       event.preventDefault();
@@ -2588,13 +2627,18 @@
       });
     },
     unlinkGoogle: function () {
-      if (!window.confirm("Unlink your Google account? You must have a password set first.")) return;
-      window.authAPI.unlinkGoogle().then(function () {
-        showToast("Google account unlinked.", "success");
-        render();
-      }).catch(function (error) {
-        showToast(error.message || "Could not unlink Google account.", "error");
-      });
+      App.openConfirmationModal(
+        "Disconnect Google Login from this StudyHub account? You will need your password to sign in unless you link Google again.",
+        function () {
+          App.closeModal();
+          window.authAPI.unlinkGoogle().then(function () {
+            showToast("Google Login disconnected.", "success");
+            render();
+          }).catch(function (error) {
+            showToast(error.message || "Could not disconnect Google Login.", "error");
+          });
+        }
+      );
     },
     setBudgetView: function (v) { ui.budgetView = v; render(); },
     setBudgetMonth: function (v) { ui.budgetMonth = Number(v); render(); },

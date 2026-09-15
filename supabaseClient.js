@@ -123,14 +123,14 @@
         password: password
       });
 
-      const session = { id: data.user.id, username: data.user.username, token: data.token };
+      const session = Object.assign({}, data.user, { token: data.token });
       setSession(session);
       return session;
     },
 
     googleLogin: async (credential) => {
       const data = await postJSON('/api/auth/google', { credential });
-      const session = { id: data.user.id, username: data.user.username, email: data.user.email, token: data.token };
+      const session = Object.assign({}, data.user, { token: data.token });
       setSession(session);
       return session;
     },

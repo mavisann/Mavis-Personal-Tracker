@@ -492,14 +492,14 @@ app.post('/api/auth/google/unlink', authenticateToken, async (req, res) => {
 app.get('/api/user/google-status', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT google_email, google_refresh_token, google_calendar_sync_enabled FROM users WHERE id = $1',
+      'SELECT calendar_google_id, google_email, google_refresh_token, google_calendar_sync_enabled FROM users WHERE id = $1',
       [req.user.id]
     );
     const user = result.rows[0];
     res.json({
-      linked: Boolean(user && user.google_refresh_token),
+      linked: Boolean(user && user.calendar_google_id && user.google_refresh_token),
       email: user ? user.google_email : null,
-      syncEnabled: Boolean(user && user.google_refresh_token && user.google_calendar_sync_enabled)
+      syncEnabled: Boolean(user && user.calendar_google_id && user.google_refresh_token && user.google_calendar_sync_enabled)
     });
   } catch (error) {
     console.error('Google status lookup failed:', error);
@@ -519,7 +519,7 @@ app.post('/api/user/google-connect', authenticateToken, async (req, res) => {
     if (!googleUser.sub || !googleUser.email) return res.status(400).json({ error: 'Google account information is incomplete.' });
     const result = await pool.query(
       `UPDATE users
-       SET google_id = $1, google_email = $2, google_refresh_token = $3,
+       SET calendar_google_id = $1, google_email = $2, google_refresh_token = $3,
            google_calendar_sync_enabled = TRUE
        WHERE id = $4
        RETURNING google_email, google_calendar_sync_enabled`,
@@ -545,7 +545,7 @@ app.post('/api/user/google-toggle-sync', authenticateToken, async (req, res) => 
   try {
     const result = await pool.query(
       `UPDATE users SET google_calendar_sync_enabled = $1
-       WHERE id = $2 AND google_refresh_token IS NOT NULL
+       WHERE id = $2 AND calendar_google_id IS NOT NULL AND google_refresh_token IS NOT NULL
        RETURNING google_calendar_sync_enabled`,
       [req.body.enabled, req.user.id]
     );
@@ -559,9 +559,28 @@ app.post('/api/user/google-toggle-sync', authenticateToken, async (req, res) => 
 
 app.post('/api/user/google-disconnect', authenticateToken, async (req, res) => {
   try {
+    const current = await pool.query(
+      'SELECT google_refresh_token FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const refreshToken = current.rows[0] && current.rows[0].google_refresh_token;
+    if (refreshToken) {
+      const revokeClient = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        'postmessage'
+      );
+      try {
+        await revokeClient.revokeToken(refreshToken);
+      } catch (error) {
+        // Local credentials are still cleared if Google's revocation endpoint
+        // is temporarily unavailable.
+        console.error('Google Calendar token revocation failed:', error);
+      }
+    }
     const result = await pool.query(
       `UPDATE users
-       SET google_id = NULL, google_email = NULL, google_refresh_token = NULL,
+       SET calendar_google_id = NULL, google_email = NULL, google_refresh_token = NULL,
            google_calendar_sync_enabled = FALSE
        WHERE id = $1
        RETURNING id`,
