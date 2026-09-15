@@ -94,6 +94,16 @@
     return data;
   }
 
+  async function authenticatedGetJSON(path) {
+    const session = getSession();
+    const response = await fetch(API_BASE_URL + path, {
+      headers: { 'Authorization': session && session.token ? 'Bearer ' + session.token : '' }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error((data && data.error) || 'Something went wrong. Please try again.');
+    return data;
+  }
+
   // ============================================================
   // Auth API
   // ============================================================
@@ -156,6 +166,13 @@
       return data.user;
     },
 
+    refreshUser: async () => {
+      const data = await authenticatedGetJSON('/api/me');
+      const session = getSession();
+      if (session) setSession(Object.assign({}, session, data.user));
+      return data.user;
+    },
+
     initializeGoogleButton: async (elementId, callback, text) => {
       const deadline = Date.now() + 5000;
       while ((!window.google || !window.google.accounts || !window.google.accounts.id) && Date.now() < deadline) {
@@ -176,6 +193,22 @@
           width: Math.min(360, element.parentElement ? element.parentElement.clientWidth : 360)
         });
       }
+    },
+
+    initializeGooglePrompt: async (callback) => {
+      const deadline = Date.now() + 5000;
+      while ((!window.google || !window.google.accounts || !window.google.accounts.id) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+        throw new Error('Google Sign-In is unavailable. Please reload and try again.');
+      }
+      const config = await getJSON('/api/config');
+      if (!config.googleClientId) throw new Error('Google Sign-In is not configured.');
+      window.google.accounts.id.initialize({ client_id: config.googleClientId, callback });
+      return function () {
+        window.google.accounts.id.prompt();
+      };
     },
 
     logout: () => {

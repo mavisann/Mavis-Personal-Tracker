@@ -129,6 +129,7 @@ function taskCalendarEvent(task) {
     event: {
       summary,
       description,
+      extendedProperties: { private: { studyhubManaged: 'true', studyhubTaskId: String(task.id) } },
       location: task.location || undefined,
       start: time
         ? { dateTime: `${date}T${time}:00`, timeZone: process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Asia/Manila' }
@@ -154,6 +155,7 @@ function courseCalendarEvents(course) {
       event: {
         summary: `[Class] ${course.name || 'Course'}${course.code ? ` (${course.code})` : ''}`,
         description: course.professor ? `Professor: ${course.professor}` : '',
+        extendedProperties: { private: { studyhubManaged: 'true', studyhubCourseId: String(course.id), studyhubScheduleIndex: String(index) } },
         location: schedule.room || undefined,
         start: {
           dateTime: `${startDate}T${String(schedule.startTime).slice(0, 5)}:00`,
@@ -167,6 +169,60 @@ function courseCalendarEvents(course) {
       }
     };
   }).filter(Boolean);
+}
+
+const studyHubCalendarLocks = new Map();
+
+async function getStudyHubCalendarUncached(calendar, userId) {
+  const result = await pool.query('SELECT google_calendar_id FROM users WHERE id = $1', [userId]);
+  const savedId = result.rows[0] && result.rows[0].google_calendar_id;
+  if (savedId) {
+    try {
+      await calendar.calendars.get({ calendarId: savedId });
+      return savedId;
+    } catch (error) {
+      if (error.code !== 404) throw error;
+    }
+  }
+  const calendars = await calendar.calendarList.list({ maxResults: 250, showHidden: true });
+  const existing = (calendars.data.items || []).find((item) =>
+    item.summary === 'StudyHub' && item.description === 'Events managed by StudyHub'
+  );
+  if (existing) {
+    await pool.query('UPDATE users SET google_calendar_id = $1 WHERE id = $2', [existing.id, userId]);
+    return existing.id;
+  }
+  const created = await calendar.calendars.insert({
+    requestBody: {
+      summary: 'StudyHub',
+      description: 'Events managed by StudyHub',
+      timeZone: process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Asia/Manila'
+    }
+  });
+  await pool.query('UPDATE users SET google_calendar_id = $1 WHERE id = $2', [created.data.id, userId]);
+  return created.data.id;
+}
+
+function getStudyHubCalendar(calendar, userId) {
+  if (!studyHubCalendarLocks.has(userId)) {
+    const lock = getStudyHubCalendarUncached(calendar, userId).finally(() => studyHubCalendarLocks.delete(userId));
+    studyHubCalendarLocks.set(userId, lock);
+  }
+  return studyHubCalendarLocks.get(userId);
+}
+
+async function findManagedEvent(calendar, calendarId, property, value) {
+  const response = await calendar.events.list({
+    calendarId,
+    maxResults: 10,
+    showDeleted: false,
+    privateExtendedProperty: [`${property}=${value}`]
+  });
+  return (response.data.items || []).find((event) =>
+    event.extendedProperties &&
+    event.extendedProperties.private &&
+    event.extendedProperties.private.studyhubManaged === 'true'
+  ) || null;
 }
 
 async function getCalendarClient(userId) {
@@ -188,8 +244,9 @@ async function getCalendarClient(userId) {
 async function syncTaskToCalendar(userId, task) {
   const calendar = await getCalendarClient(userId);
   if (!calendar || !task.due_date) return;
+  const calendarId = await getStudyHubCalendar(calendar, userId);
   const event = taskCalendarEvent(task).event;
-  const options = { calendarId: 'primary', requestBody: event };
+  const options = { calendarId, requestBody: event };
   if (task.google_event_id) {
     try {
       await calendar.events.update({ ...options, eventId: task.google_event_id });
@@ -198,6 +255,12 @@ async function syncTaskToCalendar(userId, task) {
       if (error.code !== 404) throw error;
     }
   }
+  const existing = await findManagedEvent(calendar, calendarId, 'studyhubTaskId', String(task.id));
+  if (existing) {
+    await calendar.events.update({ ...options, eventId: existing.id });
+    await pool.query('UPDATE tasks SET google_event_id = $1 WHERE id = $2 AND user_id = $3', [existing.id, task.id, userId]);
+    return;
+  }
   const inserted = await calendar.events.insert(options);
   await pool.query('UPDATE tasks SET google_event_id = $1 WHERE id = $2 AND user_id = $3', [inserted.data.id, task.id, userId]);
 }
@@ -205,6 +268,7 @@ async function syncTaskToCalendar(userId, task) {
 async function syncCourseToCalendar(userId, course) {
   const calendar = await getCalendarClient(userId);
   if (!calendar) return;
+  const calendarId = await getStudyHubCalendar(calendar, userId);
   const oldIds = Array.isArray(course.google_event_ids) ? course.google_event_ids : [];
   const createdIds = [];
   for (let i = 0; i < courseCalendarEvents(course).length; i += 1) {
@@ -212,18 +276,25 @@ async function syncCourseToCalendar(userId, course) {
     const existingId = oldIds[i];
     if (existingId) {
       try {
-        await calendar.events.update({ calendarId: 'primary', eventId: existingId, requestBody: item.event });
+        await calendar.events.update({ calendarId, eventId: existingId, requestBody: item.event });
         createdIds.push(existingId);
         continue;
       } catch (error) {
         if (error.code !== 404) throw error;
       }
     }
-    const inserted = await calendar.events.insert({ calendarId: 'primary', requestBody: item.event });
+    const existing = await findManagedEvent(calendar, calendarId, 'studyhubCourseId', String(course.id));
+    const matching = existing && existing.extendedProperties.private.studyhubScheduleIndex === String(i) ? existing : null;
+    if (matching) {
+      await calendar.events.update({ calendarId, eventId: matching.id, requestBody: item.event });
+      createdIds.push(matching.id);
+      continue;
+    }
+    const inserted = await calendar.events.insert({ calendarId, requestBody: item.event });
     createdIds.push(inserted.data.id);
   }
   for (const eventId of oldIds.slice(createdIds.length)) {
-    try { await calendar.events.delete({ calendarId: 'primary', eventId }); } catch (error) {
+    try { await calendar.events.delete({ calendarId, eventId }); } catch (error) {
       if (error.code !== 404) throw error;
     }
   }
@@ -492,14 +563,15 @@ app.post('/api/auth/google/unlink', authenticateToken, async (req, res) => {
 app.get('/api/user/google-status', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT calendar_google_id, google_email, google_refresh_token, google_calendar_sync_enabled FROM users WHERE id = $1',
+      'SELECT calendar_google_id, google_email, google_refresh_token, google_calendar_sync_enabled, google_calendar_id FROM users WHERE id = $1',
       [req.user.id]
     );
     const user = result.rows[0];
     res.json({
       linked: Boolean(user && user.calendar_google_id && user.google_refresh_token),
       email: user ? user.google_email : null,
-      syncEnabled: Boolean(user && user.calendar_google_id && user.google_refresh_token && user.google_calendar_sync_enabled)
+      syncEnabled: Boolean(user && user.calendar_google_id && user.google_refresh_token && user.google_calendar_sync_enabled),
+      calendarVisible: Boolean(user && user.google_calendar_id)
     });
   } catch (error) {
     console.error('Google status lookup failed:', error);
@@ -533,7 +605,7 @@ app.post('/api/user/google-connect', authenticateToken, async (req, res) => {
       ...tasks.rows.map((task) => syncTaskToCalendar(req.user.id, task)),
       ...courses.rows.map((course) => syncCourseToCalendar(req.user.id, course))
     ])), 'Initial Google Calendar sync');
-    res.json({ linked: true, email: result.rows[0].google_email, syncEnabled: true });
+    res.json({ linked: true, email: result.rows[0].google_email, syncEnabled: true, calendarVisible: true });
   } catch (error) {
     console.error('Google Calendar connection failed:', error);
     res.status(500).json({ error: 'Could not connect Google Calendar.' });
@@ -554,6 +626,28 @@ app.post('/api/user/google-toggle-sync', authenticateToken, async (req, res) => 
   } catch (error) {
     console.error('Google Calendar sync toggle failed:', error);
     res.status(500).json({ error: 'Could not update calendar sync.' });
+  }
+});
+
+app.post('/api/user/google-toggle-visibility', authenticateToken, async (req, res) => {
+  if (typeof req.body.visible !== 'boolean') return res.status(400).json({ error: 'visible must be a boolean.' });
+  try {
+    const result = await pool.query(
+      'SELECT google_refresh_token, google_calendar_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (!result.rows.length || !result.rows[0].google_refresh_token || !result.rows[0].google_calendar_id) {
+      return res.status(400).json({ error: 'Connect a Google account before changing calendar visibility.' });
+    }
+    const calendar = await getCalendarClient(req.user.id);
+    await calendar.calendarList.patch({
+      calendarId: result.rows[0].google_calendar_id,
+      requestBody: { selected: req.body.visible }
+    });
+    res.json({ calendarVisible: req.body.visible });
+  } catch (error) {
+    console.error('Google Calendar visibility update failed:', error);
+    res.status(500).json({ error: 'Could not update calendar visibility. Re-authorize Calendar access if needed.' });
   }
 });
 
@@ -641,9 +735,10 @@ app.delete('/api/courses', authenticateToken, async (req, res) => {
       runCalendarOperation(async () => {
         const calendar = await getCalendarClient(req.user.id);
         if (!calendar) return;
+        const calendarId = await getStudyHubCalendar(calendar, req.user.id);
         for (const course of existing.rows) {
           for (const eventId of (Array.isArray(course.google_event_ids) ? course.google_event_ids : [])) {
-            try { await calendar.events.delete({ calendarId: 'primary', eventId }); } catch (error) {
+            try { await calendar.events.delete({ calendarId, eventId }); } catch (error) {
               if (error.code !== 404) throw error;
             }
           }
@@ -699,9 +794,10 @@ app.delete('/api/tasks', authenticateToken, async (req, res) => {
       runCalendarOperation(async () => {
         const calendar = await getCalendarClient(req.user.id);
         if (!calendar) return;
+        const calendarId = await getStudyHubCalendar(calendar, req.user.id);
         for (const task of existing.rows) {
           if (!task.google_event_id) continue;
-          try { await calendar.events.delete({ calendarId: 'primary', eventId: task.google_event_id }); } catch (error) {
+          try { await calendar.events.delete({ calendarId, eventId: task.google_event_id }); } catch (error) {
             if (error.code !== 404) throw error;
           }
         }

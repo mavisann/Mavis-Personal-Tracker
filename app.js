@@ -156,7 +156,7 @@
 
   /* ---------------- State ---------------- */
   var state = { courses: [], tasks: [], transactions: [], toasts: [], googleCalendar: {
-    connected: false, syncEnabled: false, lastSyncedAt: null, lastSyncError: null
+    connected: false, linked: false, syncEnabled: false, calendarVisible: false, lastSyncedAt: null, lastSyncError: null
   }, settings: {
     theme: "light",
     appName: "Mavis",
@@ -427,6 +427,16 @@
       // been applied yet or Google Calendar is not configured.
       console.warn("Google Calendar status unavailable.", err);
     }
+
+    async function loadGoogleLoginStatus() {
+      if (!window.authAPI || !window.authAPI.refreshUser) return;
+      try {
+        await window.authAPI.refreshUser();
+        if (ui.tab === "settings" && ui.settingsTab === "account") render();
+      } catch (err) {
+        console.warn("Google Login status unavailable.", err);
+      }
+    }
   }
 
   function buildSettingsRow() {
@@ -665,8 +675,8 @@
   }
 
   function setupGoogleLinkButton() {
-    if (!window.authAPI || !window.authAPI.initializeGoogleButton) return;
-    window.authAPI.initializeGoogleButton("google-link-button", function (response) {
+    if (!window.authAPI || !window.authAPI.initializeGooglePrompt) return;
+    window.authAPI.initializeGooglePrompt(function (response) {
       var session = window.authAPI.getSession ? window.authAPI.getSession() : null;
       var linkAccount = function () {
         if (ui.modal && ui.modal.type === "confirmation") App.closeModal();
@@ -687,7 +697,10 @@
       } else {
         linkAccount();
       }
-    }, "continue_with").catch(function (error) {
+    }).then(function (startPrompt) {
+      var button = document.getElementById("google-link-button");
+      if (button) button.onclick = startPrompt;
+    }).catch(function (error) {
       showToast(error.message || "Google Sign-In is unavailable.", "error");
     });
   }
@@ -956,6 +969,7 @@
             '<p style="color:var(--text-muted);margin-top:0">Keep your StudyHub tasks and recurring course schedules in your Google Calendar. StudyHub only manages events it creates.</p>' +
             '<div class="setting-switch-row" style="margin:16px 0"><span>Account</span><strong>' + accountLabel + '</strong></div>' +
             '<div class="setting-switch-row" style="margin:16px 0"><span>Calendar Auto-Sync</span><label class="switch"><input type="checkbox" ' + (calendar.syncEnabled ? 'checked' : '') + (isLinked ? '' : ' disabled') + ' onchange="App.toggleGoogleCalendarSync(this.checked)"><span class="slider"></span></label></div>' +
+            '<div class="setting-switch-row" style="margin:16px 0"><span>Show StudyHub Calendar</span><label class="switch"><input type="checkbox" ' + (calendar.calendarVisible ? 'checked' : '') + (isLinked ? '' : ' disabled') + ' onchange="App.toggleGoogleCalendarVisibility(this.checked)"><span class="slider"></span></label></div>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="App.connectGoogleCalendar()">' + (isLinked ? 'Switch Google Account' : 'Connect Google Account') + '</button>' +
             (isLinked ? '<button class="btn" style="background:var(--rose)" onclick="App.disconnectGoogleCalendar()">Disconnect Account</button>' : '') + '</div>' +
             '<div style="display:grid;gap:6px;margin-top:16px;color:var(--text-muted);font-size:12px;line-height:1.5">' +
@@ -996,8 +1010,10 @@
           '<h3 class="card-title" style="margin-top:20px">' + icon("user", 16) + ' Google Login Account</h3>' +
           '<div class="setting-switch-row" style="margin:16px 0"><span>Account</span><strong>' + (googleLoginLinked ? 'Connected as ' + escapeHtml(googleLoginEmail || 'Google account') : 'No Google Login Account Linked') + '</strong></div>' +
           '<p class="empty-note">' + (googleLoginLinked ? 'Use the button below to switch the Google account used for signing in. Your password and StudyHub data remain unchanged.' : 'Link a Google account to sign in with Google. Set a password before disconnecting Google Login.') + '</p>' +
-          '<div id="google-link-button" style="margin-top:16px"></div>' +
-          (googleLoginLinked ? '<button class="btn-ghost" type="button" onclick="App.unlinkGoogle()">Disconnect Google Login</button>' : '') +
+          '<div class="google-account-actions">' +
+          '<button id="google-link-button" class="google-switch-account-btn" type="button">' + (googleLoginLinked ? 'Switch Google Account' : 'Connect Google Account') + '</button>' +
+          (googleLoginLinked ? '<button class="google-disconnect-account-btn" type="button" onclick="App.unlinkGoogle()">Disconnect Account</button>' : '') +
+          '</div>' +
           '</div></div>';
     }
 
@@ -2554,7 +2570,7 @@
         if (!config.googleClientId) throw new Error("Google Calendar is not configured.");
         var client = window.google.accounts.oauth2.initCodeClient({
           client_id: config.googleClientId,
-          scope: "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email openid",
+          scope: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email openid",
           ux_mode: "popup",
           access_type: "offline",
           prompt: "consent",
@@ -2593,6 +2609,19 @@
         render();
       }).catch(function (error) {
         showToast(error.message || "Could not update calendar sync.", "error");
+        render();
+      });
+    },
+    toggleGoogleCalendarVisibility: function (visible) {
+      apiFetch("/api/user/google-toggle-visibility", {
+        method: "POST",
+        body: JSON.stringify({ visible: Boolean(visible) })
+      }).then(function (status) {
+        state.googleCalendar.calendarVisible = status.calendarVisible;
+        showToast(status.calendarVisible ? "StudyHub Calendar is visible." : "StudyHub Calendar is hidden.", "success");
+        render();
+      }).catch(function (error) {
+        showToast(error.message || "Could not update calendar visibility.", "error");
         render();
       });
     },
@@ -2967,6 +2996,7 @@
       ui.lastSaveTime = new Date(); // Initialize lastSaveTime after data loads
       App.setTab(state.settings.defaultLandingTab || DEFAULT_LANDING_TAB); // Set initial tab based on settings
       loadGoogleCalendarStatus();
+      loadGoogleLoginStatus();
       setInterval(renderSaveStatus, 1000);
       // After a delay (longer than the longest animation), remove the class.
       // This ensures animations only run on the very first page load.
