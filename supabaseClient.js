@@ -145,6 +145,13 @@
       return session;
     },
 
+    googleCodeLogin: async (code) => {
+      const data = await postJSON('/api/auth/google/code', { code });
+      const session = Object.assign({}, data.user, { token: data.token });
+      setSession(session);
+      return session;
+    },
+
     linkGoogle: async (credential) => {
       const data = await authenticatedPostJSON('/api/auth/google/link', { credential });
       const session = getSession();
@@ -193,6 +200,27 @@
           width: Math.min(360, element.parentElement ? element.parentElement.clientWidth : 360)
         });
       }
+    },
+
+    initializeGoogleOAuthButton: async (callback) => {
+      const deadline = Date.now() + 5000;
+      while ((!window.google || !window.google.accounts || !window.google.accounts.oauth2) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+        throw new Error('Google Sign-In is unavailable. Please reload and try again.');
+      }
+      const config = await getJSON('/api/config');
+      if (!config.googleClientId) throw new Error('Google Sign-In is not configured.');
+      const client = window.google.accounts.oauth2.initCodeClient({
+        client_id: config.googleClientId,
+        scope: 'openid email profile',
+        ux_mode: 'popup',
+        access_type: 'offline',
+        prompt: 'select_account',
+        callback
+      });
+      client.requestCode();
     },
 
     initializeGooglePrompt: async (callback) => {

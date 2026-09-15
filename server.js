@@ -499,6 +499,62 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
+app.post('/api/auth/google/code', async (req, res) => {
+  const { code } = req.body || {};
+  if (!code) return res.status(400).json({ error: 'Google authorization code is required' });
+
+  try {
+    const { tokens } = await calendarOAuthClient.getToken(code);
+    calendarOAuthClient.setCredentials(tokens);
+    const userInfo = await calendarOAuthClient.request({
+      url: 'https://openidconnect.googleapis.com/v1/userinfo'
+    });
+    const payload = userInfo.data;
+    if (!payload || !payload.sub || !payload.email || payload.email_verified === false) {
+      return res.status(401).json({ error: 'Google account could not be verified' });
+    }
+
+    const email = payload.email.toLowerCase();
+    let result = await pool.query(
+      'SELECT id, username, email, google_id FROM users WHERE google_id = $1 OR LOWER(email) = $2 LIMIT 1',
+      [payload.sub, email]
+    );
+    let user = result.rows[0];
+
+    if (!user) {
+      const baseUsername = (email.split('@')[0] || 'google-user')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '')
+        .slice(0, 40) || 'google-user';
+      let username = baseUsername;
+      let suffix = 1;
+      while ((await pool.query('SELECT 1 FROM users WHERE username = $1', [username])).rowCount) {
+        username = (baseUsername.slice(0, 35) + '-' + suffix).slice(0, 40);
+        suffix += 1;
+      }
+      result = await pool.query(
+        'INSERT INTO users (username, password_hash, google_id, email) VALUES ($1, NULL, $2, $3) RETURNING id, username, email, google_id',
+        [username, payload.sub, email]
+      );
+      user = result.rows[0];
+    } else {
+      if (user.google_id && user.google_id !== payload.sub) {
+        return res.status(409).json({ error: 'This email is already linked to another Google account' });
+      }
+      result = await pool.query(
+        'UPDATE users SET google_id = COALESCE(google_id, $1), email = COALESCE(email, $2) WHERE id = $3 RETURNING id, username, email, google_id',
+        [payload.sub, email, user.id]
+      );
+      user = result.rows[0];
+    }
+
+    res.json({ token: issueToken(user), user: publicUser(user) });
+  } catch (error) {
+    console.error('Google authorization-code login failed:', error);
+    res.status(401).json({ error: 'Google sign-in failed' });
+  }
+});
+
 app.get('/api/me', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(

@@ -20,7 +20,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <link rel="manifest" href="site.webmanifest" />
-<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="tailwind.css" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="auth-page">
@@ -58,11 +58,6 @@
         <div id="error-box" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm" role="alert" aria-live="assertive"></div>
         <div class="auth-form-stage">
           <form id="login-form" class="auth-form active">
-            <button id="google-login-button" class="google-auth-button" type="button">
-              <span class="google-auth-icon" aria-hidden="true">G</span>
-              <span>Sign in with Google</span>
-            </button>
-            <div class="auth-divider"><span>or log in with username</span></div>
             <div>
               <label for="login-username" class="field-label">Username</label>
               <input
@@ -95,14 +90,14 @@
               <small id="login-password-error" class="field-error" role="alert"></small>
             </div>
             <button type="submit" class="auth-submit">Sign In</button>
+            <div class="auth-divider auth-google-divider"><span>Or continue with</span></div>
+            <button id="google-login-button" class="google-auth-button" type="button">
+              <span class="google-auth-logo" aria-hidden="true">G</span>
+              <span>Sign in with Google</span>
+            </button>
           </form>
 
           <form id="signup-form" class="auth-form inactive">
-            <button id="google-signup-button" class="google-auth-button" type="button">
-              <span class="google-auth-icon" aria-hidden="true">G</span>
-              <span>Sign up with Google</span>
-            </button>
-            <div class="auth-divider"><span>or sign up with username</span></div>
             <div>
               <label for="signup-email" class="field-label">Email <span style="font-weight:400;color:var(--text-muted)">(optional, enables Google login later)</span></label>
               <input
@@ -148,6 +143,11 @@
               <small id="signup-password-error" class="field-error" role="alert"></small>
             </div>
             <button type="submit" class="auth-submit">Create Account</button>
+            <div class="auth-divider auth-google-divider"><span>Or continue with</span></div>
+            <button id="google-signup-button" class="google-auth-button" type="button">
+              <span class="google-auth-logo" aria-hidden="true">G</span>
+              <span>Sign up with Google</span>
+            </button>
           </form>
         </div>
       </div>

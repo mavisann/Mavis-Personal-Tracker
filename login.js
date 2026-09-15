@@ -239,25 +239,33 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function setupGoogleSignIn() {
-    if (!window.authAPI || !window.authAPI.initializeGooglePrompt) return;
-    window.authAPI.initializeGooglePrompt(handleGoogleCredential)
-      .then(function (openGooglePrompt) {
-        ['google-login-button', 'google-signup-button'].forEach(function (buttonId) {
-          const button = document.getElementById(buttonId);
-          if (!button) return;
+      if (!window.authAPI || !window.authAPI.initializeGoogleOAuthButton) return;
+      ['google-login-button', 'google-signup-button'].forEach(function (buttonId) {
+        var button = document.getElementById(buttonId);
+        if (button) {
           button.addEventListener('click', function () {
             if (!requireTermsAgreement()) return;
             hideError();
-            openGooglePrompt();
+            window.authAPI.initializeGoogleOAuthButton(function (response) {
+              if (!response || !response.code) {
+                showError('Google authorization was cancelled.');
+                return;
+              }
+              window.authAPI.googleCodeLogin(response.code)
+                .then(function () {
+                  showError('Signed in successfully. Loading your dashboard…');
+                  errorBox.classList.remove('bg-red-50', 'border-red-200', 'text-red-700');
+                  errorBox.classList.add('success-message');
+                  window.location.href = REDIRECT_TARGET;
+                })
+                .catch(function (error) {
+                  showError(error.message || 'Google sign-in failed. Please try again.');
+                });
+            }).catch(function (error) {
+              showError(error.message || 'Google sign-in is unavailable.');
+            });
           });
-        });
-      })
-      .catch(function (error) {
-        document.querySelectorAll('.google-auth-button').forEach(function (button) {
-          button.disabled = true;
-          button.title = 'Google Sign-In is unavailable. Please reload and try again.';
-        });
-        showError(error.message || 'Google sign-in is unavailable.');
+        }
       });
   }
 
